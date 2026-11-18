@@ -1,88 +1,62 @@
-# Architektur und Infrastruktur
+# Architektur und Synchronisierung
 
-[Zur Übersicht](../README.md)
+[Zur Übersicht](../README.md) · [Einrichtung](setup.md)
 
-## Entscheidung: installierbare Web-App
+## Implementierte Version
 
-Die erste Version wird eine responsive Progressive Web App (PWA). Alle verwenden denselben Link und können die App auf dem iPhone über Safari zum Home-Bildschirm hinzufügen. Das ermöglicht eine gemeinsame Version ohne App-Store-Veröffentlichung.
-
-Der unterstützte Screenshot-Weg ist zunächst die Bildauswahl innerhalb der App. Ein eigener Eintrag als Empfänger im iOS-Teilen-Menü wird für die PWA nicht versprochen; dafür wäre später eine native Erweiterung zu prüfen. Offline kann die Oberfläche einen Hinweis anzeigen. Upload, Verarbeitung und Buchung benötigen in der ersten Version eine Internetverbindung.
-
-## Komponenten
+Die responsive Next.js-App läuft auf Vercel. Jede Person nutzt einen eigenen Supabase-Auth-Zugang. Alle Geräte einer Gruppe lesen und schreiben denselben PostgreSQL-Datenbestand. Der Browser verwendet ausschliesslich den öffentlichen Supabase-Key und die Sitzung der angemeldeten Person; ein Service-Role-Key wird nicht benötigt.
 
 ```mermaid
 flowchart TD
-    U[Persönlicher Zugang auf dem iPhone] --> W[Next.js PWA]
-    W --> A[Supabase Auth]
-    W --> API[Autorisierte Server-Endpunkte]
-    API --> DB[(PostgreSQL mit Zugriffsregeln)]
-    API --> S[Privater Bildspeicher]
-    DB --> J[Persistente Verarbeitungsaufträge]
-    J --> K[Serverseitiger Worker]
-    K --> S
-    K --> OCR[Vision/OCR-API]
-    K --> DB
-    DB --> W
+    A[iPhone Oskar] --> W[Next.js-Web-App auf Vercel]
+    B[iPhone August] --> W
+    C[iPhone Max] --> W
+    W --> Auth[Supabase Auth · E-Mail-Code / Link]
+    W --> RPC[Autorisierte PostgreSQL-Funktionen]
+    RPC --> DB[(Supabase PostgreSQL · RLS)]
+    DB --> RT[Supabase Realtime]
+    RT --> W
 ```
 
-| Komponente | Aufgabe | Grenze |
-| --- | --- | --- |
-| Next.js und TypeScript | Mobile Ansichten, Upload, Erkennungsvorschau, Statistik | Keine geheimen Anbieter-Schlüssel im Browser |
-| Vercel | Web-App und kurze API-Aufrufe | Kein minutenlang offener Upload-Request während OCR |
-| Supabase Auth | Anmeldung per E-Mail-Code, Sitzungen, Einladungszuordnung | Jede Person verwendet einen eigenen Zugang |
-| PostgreSQL | Verlässliche Zustände, Rollen, Buchungen und Statistiken | Berechtigungen werden serverseitig und per RLS geprüft |
-| Privater Storage-Bucket | Originalbilder und kurzlebige Zugriffslinks | Keine öffentlichen Screenshot-URLs |
-| `processing_jobs` und Worker | OCR ausführen, Fehler wiederholen, Ergebnisse speichern | Wiederholte Verarbeitung darf nicht erneut abbuchen |
-| Vision/OCR-Anbieter | Sichtbare Felder strukturiert auslesen | Darf keine Buchungen, Personenwahl oder Datenbankaktionen auslösen |
+## Ein gemeinsamer Stand
 
-Für den Start genügt eine Datenbank-Auftragsliste mit einem Supabase-Edge-Function-Worker. Ein Upload kann den Worker anstossen; ein geplanter Aufruf übernimmt liegen gebliebene Aufträge. Der Worker reserviert einen Auftrag atomar mit Ablaufzeit. Bei einem Timeout kann er später erneut übernommen werden. Ein eigener Redis- oder Kubernetes-Betrieb ist dafür nicht nötig.
+`get_dashboard` liest Mitglieder, Fahrten, Journal und Pakete in einer gemeinsamen PostgreSQL-Abfrage. Dadurch entsteht keine Kombination aus neuer Fahrt und altem Guthaben durch mehrere voneinander unabhängige HTTP-Abfragen. Der Browser berechnet die Anzeige aus diesem gemeinsamen Ergebnis.
 
-## Ablauf und Konsistenz
+Supabase Realtime dient als Änderungshinweis. Nach einer Änderung wird der vollständige aktuelle Gruppenstand erneut geladen. Zusätzlich geschieht das:
 
-1. Der Server prüft Sitzung, aktive Gruppenmitgliedschaft und Dateigrenzen.
-2. Er erstellt einen Upload-Datensatz und erlaubt das Schreiben an genau dessen privaten Speicherpfad.
-3. Nach erfolgreichem Upload werden Dateityp, Bildabmessungen und Prüfsumme validiert. Ein persistenter Auftrag wird angelegt.
-4. Der Worker lädt das Bild, ruft die Erkennung auf und validiert das Ergebnis gegen ein festes Schema und fachliche Regeln.
-5. Die App zeigt die erkannten Werte und eventuelle Prüfhinweise.
-6. Ein bestätigter Auftrag bucht Fahrt, persönliches Minutenjournal und Paketverbrauch in **einer Datenbanktransaktion**.
-7. Statistiken verwenden ausschliesslich verbuchte, nicht stornierte Fahrten und deren wirksame Buchungen.
+- nach erfolgreicher eigener Buchung;
+- nach erfolgreichem Aufbau einer Realtime-Verbindung;
+- bei Rückkehr in die sichtbare App und Fensterfokus;
+- wenn eine Internetverbindung wieder verfügbar ist;
+- alle 30 Sekunden, solange die App sichtbar ist;
+- beim manuellen Neuladen über das Symbol in der Kopfzeile.
 
-Wiederholte Bestätigungen verwenden denselben Idempotenzschlüssel. Ein eindeutiger Datenbankschlüssel verhindert eine zweite Buchung derselben Fahrtversion. Gleichzeitige Uploads reservieren Paketbestände transaktional, damit dieselben Minuten nicht mehrfach zugeteilt werden. Ist die Paketzuordnung noch unbekannt, bleibt die Kostenbewertung offen; der bestätigte Verbrauch wird dennoch erfasst.
+Mehrere fast gleichzeitig eintreffende Hinweise werden kurz gebündelt. Eine ältere HTTP-Antwort überschreibt keine neuere Anfrage. Ein Gruppenwechsel beendet das vorherige Abonnement. Fehler lassen den letzten gelesenen Stand mit einer sichtbaren Fehlermeldung stehen. Die Anzeige «Live verbunden» bezeichnet den Kanalzustand und ist keine Garantie gegen jede Netzstörung.
 
-Die Oberfläche kann den Bearbeitungsstatus zunächst periodisch abrufen. Realtime-Abonnements sind eine spätere Optimierung.
+Im Offline-Zustand werden keine Buchungen angenommen. iOS kann geschlossene oder im Hintergrund liegende Web-Apps anhalten; sie laden beim erneuten Öffnen nach. Es gibt keinen Service Worker und keine Offline-Warteschlange. Nur die ausdrücklich ausgewählte Demo persistiert Beispieldaten im lokalen Browser-Speicher.
+
+## Sichere Buchungen
+
+Alle kritischen Mutationen sind Datenbankfunktionen mit eigener Berechtigungsprüfung. Ein kurzes Gruppenschloss serialisiert gleichzeitige Buchungen. Fahrt und Verbrauchseintrag werden gemeinsam oder gar nicht gespeichert. Salden werden aus einem Journal abgeleitet; es gibt keinen überschreibbaren Kontostand.
+
+Jeder Schreibversuch erhält einen UUID-Idempotenzschlüssel. Das interne Schema `app_private.commands` speichert Aktion und Nutzdaten. Ein identischer Retry hat keine zweite Wirkung; derselbe Schlüssel mit anderen Daten wird abgewiesen. Im Browser bleibt der Schlüssel für einen unveränderten, fehlgeschlagenen Versuch erhalten, solange die App geöffnet bleibt. Nach einem vollständigen Neuladen ist dieser Schlüssel nicht dauerhaft gespeichert: Bei unklarem Ausgang zuerst die Fahrtenliste prüfen. Die App erkennt in dieser Version keine inhaltlich doppelt manuell eingegebenen Fahrten.
+
+Eine Stornierung durch einen Admin markiert die ursprüngliche Fahrt und erzeugt eine Gegenbuchung. Rollenänderungen dürfen den letzten aktiven Admin nicht entfernen. Deaktivierte Mitglieder verlieren Datenzugriff und Schreibrechte; ihre Historie bleibt erhalten.
 
 ## Berechtigungen
 
-- **Mitglied:** eigene Screenshots hochladen, eigene Entwürfe prüfen, Gruppenstatistik und Buchungshistorie sehen, Korrekturen eigener verbuchter Fahrten anfragen.
-- **Admin:** zusätzlich Mitglieder einladen/deaktivieren, Pakete erfassen, Guthaben zuweisen, Korrekturen und Bestandsabgleiche buchen.
-- Originalbilder sehen standardmässig nur die hochladende Person und Gruppenadmins. Andere Mitglieder benötigen für Statistiken keine Bilder.
-- Alle Gruppendaten tragen eine `group_id`. Fremde Gruppen- oder Nutzer-IDs in Requests verleihen keine Rechte.
-- RLS schützt Datenbank und Storage; Rollenänderungen, Journalbuchungen und Bestandskorrekturen sind serverseitige Operationen.
-- Ein privilegierter Worker-Schlüssel bleibt im Secret-Store. Endpunkte mit diesem Schlüssel prüfen die Berechtigung ausdrücklich, da privilegierte Schlüssel RLS umgehen können.
+RLS erlaubt ausschliesslich aktiven Gruppenmitgliedern das Lesen der jeweiligen Gruppendaten. Einladungen sind nur für Admins lesbar. Direkte Tabellenänderungen durch den Browser sind nicht erlaubt. Private Hilfsfunktionen sind für Mitglieder nicht aufrufbar; allein der RLS-Prüfhelfer ist entsprechend freigegeben.
 
-## Daten und Betrieb
+Die RPCs legen die fahrende Person aus `auth.uid()` fest. Der Browser kann keine andere Person als Fahrer einschleusen. Paketkäufer und Guthabenempfänger werden auf Zugehörigkeit zur selben Gruppe geprüft. Einladungscodes enthalten 128 Bit Zufall, sind für sieben Tage gültig und verleihen nach Anmeldung ausschliesslich die Rolle Mitglied. Sie liegen im geschützten Datenbestand und werden nur privat geteilt.
 
-- Datenbank und Bildspeicher in einer verfügbaren EU-Region anlegen. Das legt die Verarbeitungsregion des OCR-Anbieters nicht automatisch fest; diese wird separat geprüft und in der App transparent gemacht.
-- Nur das für die Erkennung benötigte Bild an den OCR-Dienst senden. Namen und Gruppenmitglieder muss dieser nicht kennen.
-- Vorgeschlagene Bildaufbewahrung: 30 Tage nach endgültiger Bearbeitung, anschliessend automatische Löschung. Offene Prüfungen erhalten eine eigene begrenzte Frist mit Hinweis vor dem Löschen. Buchungsdaten bleiben erhalten.
-- Kein Volltext aus Fahrtbildern, keine Bilder und keine Secrets in Anwendungslogs. Für Fehlerdiagnosen genügen interne Auftrags-ID, Fehlerklasse, Laufzeit und Versuchszahl.
-- Upload-Grösse, Dateityp, Anzahl paralleler Aufträge und OCR-Ausgaben begrenzen. Die Upload-Grenze ist konfigurierbar; als Startwert eignen sich 10 MB für PNG/JPEG.
-- Authentifizierte Antworten und Screenshots werden nicht im öffentlichen PWA-Cache abgelegt. Beim Abmelden lokale persönliche Zustände entfernen.
-- Datenbankbackups und Wiederherstellung vor produktiver Nutzung einrichten und prüfen. Storage-Objekte sind separat zu behandeln; ein Datenbankbackup enthält nicht automatisch die Bilddateien.
-- Entwicklung und Produktion erhalten getrennte Supabase-Projekte und Secrets. Vorschau-Deployments greifen nicht auf echte Fahrtdaten zu.
+## Spätere API-Erkennung
 
-## Deployment-Reihenfolge
+`lib/recognition.ts` beschreibt eine austauschbare OCR-Schnittstelle. Noch gibt es weder Upload-Endpunkt noch Bildspeicher, Worker oder Anbieteraufrufe. DeepSeek Flash beziehungsweise die OCR-API sind als Kandidaten vorgemerkt; Genauigkeit und aktueller Preis werden vor Integration erneut geprüft.
 
-1. Next.js-Projekt, PWA-Manifest und mobile Navigation erstellen.
-2. Supabase-Projekt, SQL-Migrationen, RLS und privaten Bucket einrichten.
-3. Login und Einladungen mit korrekten Redirect-URLs verbinden; E-Mail-Zustellung für echten Betrieb konfigurieren.
-4. Server-Endpunkte, Auftragsverarbeitung und OCR integrieren.
-5. Secrets in den jeweiligen Hosting-Diensten hinterlegen; nur öffentliche Auth-Konfiguration darf ins Browser-Bundle.
-6. Testumgebung mit synthetischen Daten bereitstellen und die Abnahmekriterien aus der [Roadmap](roadmap.md) erfüllen.
-7. Produktionsumgebung mit eigenem Datenbestand veröffentlichen, Backup und Ausgabenlimits kontrollieren.
+Die spätere Verarbeitung muss serverseitig erfolgen. Das Modell liest ausschliesslich sichtbare Felder. Der Server addiert Fahr- und Pausierzeit, prüft Duplikate und legt die Person über den Login fest. Anbieter-Schlüssel bleiben ausserhalb des Browser-Bundles. Details: [Screenshot-Erkennung](screenshot-recognition.md).
 
-## Laufende Kosten
+## Betrieb
 
-Die Kosten bestehen aus Web-Hosting, Supabase, OCR pro Bild sowie gegebenenfalls Domain und E-Mail-Versand. Für drei Personen ist ein kleiner Betrieb zu erwarten; ob kostenlose Tarife genügen, hängt von aktuellen Anbieterbedingungen, Speicher, Backups und OCR-Nutzung ab.
+[Die Einrichtungsanleitung](setup.md) beschreibt Supabase-Projekt, SQL-Migration, E-Mail-Versand, Redirect-URLs und Vercel-Variablen. Es gibt keine bereits provisionierten Cloud-Ressourcen in diesem Repository. Die lokale Testumgebung verwendet eine echte PostgreSQL-Engine via PGlite, jedoch keine echte Supabase-Auth- oder Realtime-Infrastruktur.
 
-Vor dem Deployment die aktuellen Tarife prüfen und ein monatliches Ausgabenlimit beziehungsweise Warnungen einrichten. Es wird hier kein ungeprüfter Fixpreis zugesagt. Das Erstellen dieses Repositories legt keine kostenpflichtigen Cloud-Ressourcen an.
+Das Dashboard lädt zunächst alle Gruppendatensätze in einem JSON-Ergebnis. Es gibt deshalb keine stille REST-Standardbegrenzung auf 1'000 Zeilen. Für grosse Gruppen oder umfangreiche Historien sind später serverseitige Aggregationen und Seitennavigation vorzusehen.

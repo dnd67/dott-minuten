@@ -2,6 +2,8 @@
 
 [Zur Übersicht](../README.md)
 
+**Vorgemerkte Erweiterung, in Version 1 nicht aktiviert.** Aktuell werden Fahr- und Pausenminuten manuell eingetragen. Die Schnittstelle steht in `lib/recognition.ts`; es gibt noch keinen Upload, Bildspeicher oder OCR-Aufruf. DeepSeek Flash beziehungsweise die DeepSeek-OCR-API sind Kandidaten für einen späteren Genauigkeitstest. Anbieter-Schlüssel werden erst dann serverseitig benötigt.
+
 ## Automatische Personenzuordnung
 
 Jede Person lädt ihre eigene Fahrt hoch. Die App setzt deshalb die aktive Mitgliedschaft des angemeldeten Nutzers als fahrende Person. Der Nutzer kann die Zuordnung in der Vorschau sehen; eine fehlerhafte verbuchte Zuordnung wird über einen nachvollziehbaren Korrekturprozess geändert.
@@ -10,13 +12,13 @@ Ein Screenshot eines gemeinsam verwendeten Dott-Kontos kann die fahrende Person 
 
 ## Zu erkennende Informationen
 
-| Feld | Verwendung |
-| --- | --- |
-| Fahrzeit | Statistik und sichtbare Vorschau, intern in Sekunden |
-| Pausierzeit | Separates Feld, zählt ebenfalls zum Minutenverbrauch |
-| Separat angezeigte Paketzeit | Falls vorhanden, Abgleich mit der berechneten Summe; bei Widerspruch Prüfung |
-| Datum und Uhrzeit | Fahrtenliste, Zeitraumfilter und Duplikatprüfung |
-| Fahrt-ID | Erkennen bereits erfasster Fahrten, sofern sichtbar |
+| Feld                                                       | Verwendung                                                                                      |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Fahrzeit                                                   | Statistik und sichtbare Vorschau, intern in Sekunden                                            |
+| Pausierzeit                                                | Separates Feld, zählt ebenfalls zum Minutenverbrauch                                            |
+| Separat angezeigte Paketzeit                               | Falls vorhanden, Abgleich mit der berechneten Summe; bei Widerspruch Prüfung                    |
+| Datum und Uhrzeit                                          | Fahrtenliste, Zeitraumfilter und Duplikatprüfung                                                |
+| Fahrt-ID                                                   | Erkennen bereits erfasster Fahrten, sofern sichtbar                                             |
 | Freischaltgebühr, Gesamtbetrag und durchgestrichene Preise | Für die interne Abrechnung ignorieren; CHF-Kosten aus Paketpreis und Minutenverbrauch berechnen |
 
 Fehlende Felder werden als `null` ausgegeben. Dauer und belastete Zeit werden nicht miteinander vertauscht. Werte wie «12:30» müssen anhand der Beschriftung als Uhrzeit oder Dauer erkannt werden; das Format allein genügt nicht.

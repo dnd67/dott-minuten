@@ -1,98 +1,64 @@
 # Datenmodell und Abrechnung
 
-[Zur Übersicht](../README.md)
+[Zur Übersicht](../README.md) · [Ausführbare SQL-Migration](../supabase/migrations/202611180001_initial.sql)
 
-## Grundregeln
+## Implementierte Tabellen
 
-Das persönliche Guthaben wird in Minuten angezeigt. Intern werden Zeitwerte als ganze Sekunden geführt, Geldwerte als ganze Rappen. Dadurch entstehen keine Rundungsfehler durch binäre Gleitkommazahlen. Eingaben mit Minutenbruchteilen werden nach einer klaren, dokumentierten Eingaberegel in Sekunden umgerechnet; die App akzeptiert keine versteckte Rundung.
+| Tabelle                | Zweck                                                                                                                     |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `groups`               | Gemeinsamer Club, Ersteller und Schlüssel zur wiederholbaren Erstellung                                                   |
+| `memberships`          | Persönlicher Auth-Zugang, Anzeigename, Gruppe, Rolle und Aktivstatus                                                      |
+| `invitations`          | Zufälliger Einladungscode, Gruppe und Ablauf nach sieben Tagen                                                            |
+| `rides`                | Fahrer, Zeitpunkt, Fahrsekunden, Pausensekunden, Summe, Herkunft, Regelversion, optionale Kostenschätzung und Stornierung |
+| `minute_entries`       | Unveränderliche Gutschriften, Fahrtverbräuche und Gegenbuchungen mit Grund und Ersteller                                  |
+| `packages`             | Tatsächlich erfasste Käufe: Minuten, Preis in Rappen, Käufer, Zeitpunkt und Notiz                                         |
+| `app_private.commands` | Idempotenzschlüssel mit Aktion und Nutzdaten; für Browser nicht lesbar                                                    |
 
-**Fahrzeit, Pausierzeit und belastete Paketminuten sind getrennte Werte.** Für diese Gruppe wurde bestätigt: `charged_seconds = duration_seconds + pause_seconds`. Beispiel: 14 Minuten Fahrzeit plus 1 Minute Pause ergeben 900 Sekunden beziehungsweise 15 Minuten Verbrauch. Die Regel wird serverseitig angewendet und mit ihrer Version an der Buchung festgehalten. Die App erfindet keine zusätzliche Dott-Rundungsregel.
+Tabellenbeziehungen sichern Gruppenidentität und Personenbezüge über zusammengesetzte Fremdschlüssel ab. Alle öffentlichen Tabellen sind durch RLS geschützt. Schreibrechte existieren ausschliesslich über die vorgesehenen RPCs.
 
-Die Freischaltgebühr wird für diese Gruppe ignoriert. Durchgestrichene Preise und der angezeigte Gesamtbetrag dienen nicht als Grundlage der internen Kostenberechnung. Diese basiert auf Paketpreis und verbrauchten Minuten.
+## Zeit und Guthaben
 
-Persönliche Gutschriften, tatsächliche Paketkäufe und CHF-Zahlungen bleiben getrennt. Eine interne Gutschrift kauft keine Minuten bei Dott. CHF-Einzahlungen werden nicht ohne eine gewählte Umrechnungsregel in Minuten umgewandelt.
-
-## Entitäten
-
-Die Tabelle ist ein fachlicher Schemaentwurf, noch keine ausführbare SQL-Migration. Sämtliche gruppenbezogenen Beziehungen müssen auf dieselbe Gruppe zeigen; Fremdschlüssel und zusammengesetzte Constraints sichern dies zusätzlich zur Zugriffskontrolle ab.
-
-| Tabelle | Wesentliche Inhalte |
-| --- | --- |
-| `groups` | Name, Währung CHF, Anzeigezeitzone `Europe/Zurich`, Einstellungen |
-| `memberships` | Gruppe, Auth-Nutzer, Anzeigename, Rolle, Aktivstatus; eindeutig pro Gruppe/Nutzer |
-| `invitations` | Gruppe, vorgesehene Rolle, gehashter Token, Ablaufdatum, Einlösezeitpunkt |
-| `packages` | Gekaufte Sekunden, Preis in Rappen, Kaufdatum, optional Ablaufdatum, kaufende Person |
-| `uploads` | Hochladende Mitgliedschaft, privater Speicherpfad, SHA-256, Status, Erkennerversion, Löschfrist |
-| `processing_jobs` | Upload, Versuchszahl, Status, frühester nächster Versuch, Reservierung und deren Ablauf |
-| `extractions` | Strukturierte erkannte Felder, sichtbare Belegtexte, Prüfhinweise, Schema-/Modellversion |
-| `rides` | Fahrende Person, hochladende Person, Fahrtzeitpunkt, `duration_seconds` (Fahrzeit), `pause_seconds` (Pausierzeit), `charged_seconds` (Summe), Abrechnungsregelversion, optionale externe Fahrt-ID, Status, Version sowie Kostenstatus `unknown`/`estimated`/`confirmed` mit Bewertungsgrundlage |
-| `minute_entries` | Mitgliedschaft, vorzeichenbehaftete Sekunden, Art, Fahrtbezug, ausführende Person, Grund, Gegenbuchungsbezug |
-| `inventory_entries` | Veränderung des gemeinsamen Paketbestands, Sekunden, optional Paket- und Fahrtbezug, Art, Grund und Gegenbuchungsbezug |
-| `ride_package_usage` | Zuordnung einer Fahrt zu einem oder mehreren Paketen mit jeweils verbrauchten Sekunden, Kostenbewertung und Herkunft der Zuordnung (belegt oder explizite Annahme) |
-| `payments` | Zahlende Person, Betrag in Rappen, Datum, Zweck und optional Paketbezug; erfasste Zahlungen ohne Zahlungsabwicklung |
-| `audit_events` | Nachvollziehbare Mitglieds-, Rollen- und Freigabeänderungen mit Akteur und Zeitpunkt |
-
-## Persönliches Minutenjournal
+Die erste Eingabeoberfläche verwendet **ganze Minuten**, intern speichert die Datenbank ganze Sekunden. Zeitpunkte werden als `timestamptz` gespeichert. Eingaben beziehen sich auf die lokale Gerätezeitzone; die Fahrtenliste und die Tagesgrenzen der Übersicht verwenden `Europe/Zurich`.
 
 ```text
-Persönliches Guthaben = Summe aller wirksamen minute_entries der Person
+Verbrauch = Fahrsekunden + Pausensekunden
+Persönliches Guthaben = Summe aller eigenen Journalbeträge
+Gemeinsamer Bestand = Summe gekaufter Paketzeit - nicht stornierter Verbrauch
+Noch nicht zugewiesen = gemeinsamer Bestand - Summe aller persönlichen Guthaben
 ```
 
-- Gutschrift: positiver Betrag, nur durch Admins.
-- Verbrauch: negativer Betrag aus einer bestätigten Fahrt.
-- Übertragung: negativer und positiver Betrag für zwei Mitglieder in derselben Transaktion.
-- Korrektur: Gegenbuchung zur alten Buchung und, falls nötig, neue Buchung mit Grund.
+14 Minuten Fahrt + 1 Minute Pause = 900 Sekunden beziehungsweise 15 Minuten Verbrauch. `charged_seconds` ist eine generierte Datenbankspalte. Die Gruppe hat bestätigt, dass Pausen zählen. **Freischaltgebühren werden ignoriert.** Die Oberfläche fragt keine solchen Gebühren ab.
 
-Es gibt keine fest vorgegebenen Aufladebeträge. Jede fachlich gültige Eingabe innerhalb der technischen Zahlenbereiche ist möglich. Änderungen werden nicht durch ein stilles Überschreiben des Saldos umgesetzt.
+Interne Gutschriften sind frei wählbare positive Ganzminutenbeträge bis zur technischen Eingabegrenze von 10 Millionen Minuten pro Buchung. Eine Gutschrift kauft kein Dott-Paket. Übersteigt die Zuweisung den erfassten gemeinsamen Bestand, wird eine Unterdeckung sichtbar. Negative persönliche Salden bleiben erlaubt, damit tatsächliche Fahrten auch nachträglich erfasst werden können.
 
-Negative persönliche Salden bleiben sichtbar und lösen einen Hinweis aus. Eine tatsächlich gefahrene und bestätigte Fahrt darf nicht verschwinden, nur weil vorher zu wenig internes Guthaben vorhanden war.
+## Transaktionen, Rechte und Korrekturen
 
-## Gemeinsamer Bestand
+- Ein Mitglied erfasst nur eigene Fahrten. Die Person wird serverseitig aus dem Login abgeleitet.
+- Admins können positive Gutschriften buchen, Pakete erfassen und Fahrten stornieren.
+- Eine Fahrt erzeugt genau einen negativen Journalbetrag, eine Stornierung genau eine Gegenbuchung. Die Originalfahrt bleibt erhalten und wird aus aktiven Statistiken herausgenommen.
+- Ein identischer Schreibversuch mit gleichem Idempotenzschlüssel ist wirkungslos. Abweichende Nutzdaten mit demselben Schlüssel werden zurückgewiesen.
+- Alle Mutationen prüfen zuerst die aktive Mitgliedschaft und sperren die Gruppe für die kurze Transaktion. Eine fehlgeschlagene Aktion hinterlässt keine Teilbuchungen oder reservierten Idempotenzschlüssel.
+- Korrekturen einer Fahrt erfolgen durch Storno und neue eigene Erfassung. Direkte Änderungen oder Löschungen im Journal sind nicht zulässig.
 
-```text
-Berechneter Paketbestand
-  = erfasste Käufe + Bestandskorrekturen - Verbrauch - Verfall
-
-Rechnerisch nicht zugewiesene Minuten
-  = berechneter Paketbestand - Summe der persönlichen Guthaben
-```
-
-Die App zeigt den berechneten Bestand und das Datum des letzten manuellen Abgleichs mit Dott. Ohne direkte Anbieter-Anbindung kann sie ausgelassene Fahrten oder nicht erfasste Käufe nicht selbst feststellen.
-
-Admins können auch grössere freie Gutschriften erfassen. Übersteigt die Summe der Guthaben den erfassten Bestand, zeigt die App eine Unterdeckung. Sie erzeugt dafür keinen fiktiven Paketkauf.
-
-Verfall reduziert den gemeinsamen Bestand. Eine allfällige Aufteilung des Verlusts auf persönliche Guthaben wird als separate, begründete Buchung behandelt. Solange dafür keine Gruppenregel vereinbart ist, erscheint der Unterschied sichtbar zur Klärung; persönliche Guthaben werden nicht heimlich gekürzt.
-
-Unbekannte Paketzuordnung verhindert nicht die Erfassung eines bestätigten Verbrauchs: Ein gruppenweiter Bestandsabzug kann zunächst ohne Paketbezug erfolgen. Seine spätere Zuordnung ergänzt die Kostenbewertung und darf keinen zweiten Bestandsabzug erzeugen.
-
-Vor einer endgültigen Verfallsbuchung muss noch nicht zugeordneter Verbrauch für die betroffenen Pakete geklärt werden. Andernfalls bleiben Verfall und Paketrest ausdrücklich vorläufig. Beispiel: Nach dem Kauf von 600 Minuten und 10 bereits gruppenweit abgezogenen Minuten dürfen nicht zusätzlich alle 600 Minuten als verfallen abgebucht werden. Verfallen kann nur der tatsächlich unverbrauchte Rest.
+Version 1 bietet keine negativen administrativen Guthabenkorrekturen, Minutenübertragungen oder Paketkorrekturen. Diese benötigen eigene Gegenbuchungsfunktionen und sind als Erweiterung vorgemerkt. Im täglichen Betrieb echte Käufe und Gutschriften vor dem Speichern prüfen; Testeinträge gehören in ein separates Projekt oder die Demo.
 
 ## Kostenübersicht
 
-Zu unterscheiden sind:
+CHF-Eingaben werden exakt in ganze Rappen umgerechnet. Paketkäufe dokumentieren, wer bezahlt hat. Sie verteilen keine persönlichen Minuten automatisch und lösen keine Zahlungen aus.
 
-1. **Paketkäufe:** Was die Gruppe für Minuten bezahlt hat.
-2. **Beiträge/Zahlungen:** Wer tatsächlich welchen Betrag beigetragen hat.
-3. **Verbrauchskosten:** Welcher Anteil der Paketkosten auf die Fahrten einer Person entfällt.
+Die Fahrtkosten sind **ausschliesslich eine Schätzung**. Bei Erfassung einer Fahrt bestimmt die Datenbank den gewichteten Preis sämtlicher bereits erfasster Pakete mit Kaufzeitpunkt vor oder gleich dem Fahrtzeitpunkt:
 
-Beispiel mit frei erfundenem Paketpreis: Ein Paket mit 600 Minuten kostet CHF 90.00. Bei 14 Minuten Fahrzeit und 1 Minute Pause entstehen 15 Minuten Verbrauch und damit CHF 2.25 anteilige Paketkosten. Eine im Screenshot angezeigte Freischaltgebühr wird nicht addiert. Fehlen Pausenangaben, wird deren Wert nicht stillschweigend als null angenommen; die Vorschau verlangt eine Klärung.
+```text
+Geschätzte Fahrtkosten in Rappen
+  = verbrauchte Sekunden × Summe Paketpreise / Summe Paketsekunden
+```
 
-Bei mehreren Paketen wird der Verbrauch einem Paket oder mehreren Paketen zugeordnet. Die tatsächliche Zuordnung wird, soweit verfügbar, übernommen. Eine angenommene Reihenfolge wie «zuerst ablaufendes Paket zuerst» darf erst nach Prüfung als Regel verwendet werden und wird andernfalls als Schätzung gekennzeichnet.
+Diese Schätzung wird mit der Fahrt gespeichert und später nicht automatisch verändert. Historische Fahrten, die vor der Eingabe ihrer Paketkäufe erfasst wurden, können deshalb weiterhin offene Kosten haben. Freischaltung, sichtbarer Screenshot-Gesamtpreis und durchgestrichene Tarife werden nicht addiert. Beispiel: 600 Minuten für CHF 90.00 ergeben bei 15 Minuten Verbrauch geschätzte CHF 2.25.
 
-Kosten werden aus Paketpreis und zugeordnetem Verbrauch berechnet. Zwischenrechnungen behalten die erforderliche Dezimalpräzision; die Anzeige wird auf Rappen gerundet. Für spätere Ausgleichszahlungen braucht es eine dokumentierte Restbetragsregel, damit gerundete Teilbeträge wieder die Gesamtsumme ergeben.
+Fehlen geeignete Pakete, ist die Bewertung `NULL` und wird als offen angezeigt. Sie wird nicht mit bestätigten Nullkosten verwechselt. Die Statistik nennt die Anzahl unbewerteter Fahrten neben der Summe der bekannten Schätzungen. Zwischenwerte bleiben dezimal; die Anzeige rundet auf Rappen. Da keine Ausgleichszahlungen daraus erzeugt werden, behauptet die App keine centgenaue Verteilung sämtlicher Käufe.
 
-Ohne belastbare Bewertungsgrundlage sind Kosten **unbekannt**, niemals stillschweigend CHF 0.00. **Geschätzte** Kosten sind nur mit einer ausdrücklich gespeicherten Annahme und sichtbarer Kennzeichnung zulässig; sie zählen nicht als endgültig abgerechnete Kosten. **Bestätigte** Kosten beruhen auf einer belegten Zuordnung und bekanntem Preis. Die Statistik weist die drei Zustände getrennt aus. Der sichtbare Gesamtrechnungsbetrag wird nicht als interne Fahrtkosten übernommen oder zu Paketkosten addiert. Eine verbindliche «wer schuldet wem»-Abrechnung ist eine spätere Funktion mit eigener Verteilregel.
+Es gibt keine belegte Zuordnung von Fahrten zu bestimmten Dott-Paketen und keine automatische Erfassung von Paketverfall. Der gemeinsame Bestand ist ein berechneter Stand aus euren Eingaben, kein Live-Abruf bei Dott. Falls später Verfall ergänzt wird, darf bereits erfasster Verbrauch nicht nochmals als verfallen abgezogen werden.
 
-## Zeit, Duplikate und Buchungssicherheit
+## Grenzen und spätere Erweiterungen
 
-- Zeitpunkte werden intern in UTC gespeichert und in `Europe/Zurich` angezeigt. Sommer-/Winterzeit und unvollständige Datumsangaben werden ausdrücklich behandelt.
-- Anzeigenamen sind keine Schlüssel. Eine Umbenennung von Oskar oder das Hinzufügen einer weiteren Person namens Max verändert keine früheren Zuordnungen.
-- Mitglieder werden deaktiviert statt mitsamt ihrer Buchungen gelöscht. Eine Kontolöschung benötigt eine gesonderte Anonymisierungs- und Aufbewahrungsregel.
-- Eindeutige externe Fahrt-IDs gelten innerhalb einer Gruppe. Fehlende IDs bleiben `NULL` und werden nicht künstlich erzeugt.
-- Identische Bildprüfsummen und ähnliche Fahrtdaten führen zu Duplikatprüfungen; OCR-Texte allein sind kein sicherer Schlüssel.
-- Fahrtversion und Buchungs-Idempotenzschlüssel sind eindeutig. Zustandswechsel und Journalbuchungen erfolgen gemeinsam in einer Datenbanktransaktion.
-- Korrekturen einer verbuchten Fahrt erzeugen eine neue Version, Gegenbuchungen und aktualisierte Kostenbezüge. Vergangene Buchungen bleiben nachvollziehbar.
-
-## Datenschutz im Modell
-
-Keine Dott-Zugangsdaten speichern. Bewegungsrouten, Start-/Zieladressen und andere für Minuten und Kosten unnötige Bildinhalte werden nicht als strukturierte Daten übernommen. Das Originalbild erhält eine begrenzte Aufbewahrung. Statistik und Buchungsjournal müssen auch nach dessen Löschung verständlich bleiben.
+Noch nicht angelegt sind Bildspeicher, Upload-Aufträge, OCR-Ergebnisse, zusätzliche Beitragszahlungen und Paketverbrauchszuordnungen. Die SQL-Spalte `source` ist vorbereitet, erlaubt per Constraint aber zunächst ausschliesslich `manual`. Erst eine eigene Migration und geprüfte serverseitige Verarbeitung dürfen `ocr` freigeben. Deaktivierung erhält die Historie; Kontolöschung und Anonymisierung benötigen später einen separaten Ablauf.

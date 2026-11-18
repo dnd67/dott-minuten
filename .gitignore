@@ -19,3 +19,10 @@ node_modules/
 coverage/
 *.log
 .DS_Store
+
+# TypeScript und lokale Browser-Tests
+*.tsbuildinfo
+/playwright-report/
+/test-results/
+# Wird von Next.js bei dev/build erzeugt
+next-env.d.ts
