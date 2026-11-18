@@ -6,7 +6,9 @@
 
 Das persönliche Guthaben wird in Minuten angezeigt. Intern werden Zeitwerte als ganze Sekunden geführt, Geldwerte als ganze Rappen. Dadurch entstehen keine Rundungsfehler durch binäre Gleitkommazahlen. Eingaben mit Minutenbruchteilen werden nach einer klaren, dokumentierten Eingaberegel in Sekunden umgerechnet; die App akzeptiert keine versteckte Rundung.
 
-**Fahrtdauer und belastete Paketminuten sind getrennte Werte.** Der Screenshot kann beide enthalten. Nur eine sichtbare Belastung oder eine ausdrücklich geprüfte Abrechnungsregel bestimmt den Minutenabzug. Die App erfindet keine Dott-Rundungsregel.
+**Fahrzeit, Pausierzeit und belastete Paketminuten sind getrennte Werte.** Für diese Gruppe wurde bestätigt: `charged_seconds = duration_seconds + pause_seconds`. Beispiel: 14 Minuten Fahrzeit plus 1 Minute Pause ergeben 900 Sekunden beziehungsweise 15 Minuten Verbrauch. Die Regel wird serverseitig angewendet und mit ihrer Version an der Buchung festgehalten. Die App erfindet keine zusätzliche Dott-Rundungsregel.
+
+Die Freischaltgebühr wird für diese Gruppe ignoriert. Durchgestrichene Preise und der angezeigte Gesamtbetrag dienen nicht als Grundlage der internen Kostenberechnung. Diese basiert auf Paketpreis und verbrauchten Minuten.
 
 Persönliche Gutschriften, tatsächliche Paketkäufe und CHF-Zahlungen bleiben getrennt. Eine interne Gutschrift kauft keine Minuten bei Dott. CHF-Einzahlungen werden nicht ohne eine gewählte Umrechnungsregel in Minuten umgewandelt.
 
@@ -23,7 +25,7 @@ Die Tabelle ist ein fachlicher Schemaentwurf, noch keine ausführbare SQL-Migrat
 | `uploads` | Hochladende Mitgliedschaft, privater Speicherpfad, SHA-256, Status, Erkennerversion, Löschfrist |
 | `processing_jobs` | Upload, Versuchszahl, Status, frühester nächster Versuch, Reservierung und deren Ablauf |
 | `extractions` | Strukturierte erkannte Felder, sichtbare Belegtexte, Prüfhinweise, Schema-/Modellversion |
-| `rides` | Fahrende Person, hochladende Person, Fahrtzeit, tatsächliche Dauer, belastete Sekunden, Zusatzkosten, optionale externe Fahrt-ID, Status, Version sowie Kostenstatus `unknown`/`estimated`/`confirmed` mit Bewertungsgrundlage |
+| `rides` | Fahrende Person, hochladende Person, Fahrtzeitpunkt, `duration_seconds` (Fahrzeit), `pause_seconds` (Pausierzeit), `charged_seconds` (Summe), Abrechnungsregelversion, optionale externe Fahrt-ID, Status, Version sowie Kostenstatus `unknown`/`estimated`/`confirmed` mit Bewertungsgrundlage |
 | `minute_entries` | Mitgliedschaft, vorzeichenbehaftete Sekunden, Art, Fahrtbezug, ausführende Person, Grund, Gegenbuchungsbezug |
 | `inventory_entries` | Veränderung des gemeinsamen Paketbestands, Sekunden, optional Paket- und Fahrtbezug, Art, Grund und Gegenbuchungsbezug |
 | `ride_package_usage` | Zuordnung einer Fahrt zu einem oder mehreren Paketen mit jeweils verbrauchten Sekunden, Kostenbewertung und Herkunft der Zuordnung (belegt oder explizite Annahme) |
@@ -72,15 +74,14 @@ Zu unterscheiden sind:
 1. **Paketkäufe:** Was die Gruppe für Minuten bezahlt hat.
 2. **Beiträge/Zahlungen:** Wer tatsächlich welchen Betrag beigetragen hat.
 3. **Verbrauchskosten:** Welcher Anteil der Paketkosten auf die Fahrten einer Person entfällt.
-4. **Zusatzkosten:** Sichtbare Entsperr- oder sonstige Gebühren, soweit getrennt erkennbar.
 
-Beispiel mit frei erfundenen Werten: Ein Paket mit 600 Minuten kostet CHF 90.00. Eine Fahrt belastet 12 Minuten und entspricht damit CHF 1.80 Paketverbrauch. Aus einem Screenshot mit 11 Minuten 40 Sekunden Fahrtdauer allein wird diese Belastung nicht abgeleitet, solange die Rundungsregel unbekannt ist.
+Beispiel mit frei erfundenem Paketpreis: Ein Paket mit 600 Minuten kostet CHF 90.00. Bei 14 Minuten Fahrzeit und 1 Minute Pause entstehen 15 Minuten Verbrauch und damit CHF 2.25 anteilige Paketkosten. Eine im Screenshot angezeigte Freischaltgebühr wird nicht addiert. Fehlen Pausenangaben, wird deren Wert nicht stillschweigend als null angenommen; die Vorschau verlangt eine Klärung.
 
 Bei mehreren Paketen wird der Verbrauch einem Paket oder mehreren Paketen zugeordnet. Die tatsächliche Zuordnung wird, soweit verfügbar, übernommen. Eine angenommene Reihenfolge wie «zuerst ablaufendes Paket zuerst» darf erst nach Prüfung als Regel verwendet werden und wird andernfalls als Schätzung gekennzeichnet.
 
 Kosten werden aus Paketpreis und zugeordnetem Verbrauch berechnet. Zwischenrechnungen behalten die erforderliche Dezimalpräzision; die Anzeige wird auf Rappen gerundet. Für spätere Ausgleichszahlungen braucht es eine dokumentierte Restbetragsregel, damit gerundete Teilbeträge wieder die Gesamtsumme ergeben.
 
-Ohne belastbare Bewertungsgrundlage sind Kosten **unbekannt**, niemals stillschweigend CHF 0.00. **Geschätzte** Kosten sind nur mit einer ausdrücklich gespeicherten Annahme und sichtbarer Kennzeichnung zulässig; sie zählen nicht als endgültig abgerechnete Kosten. **Bestätigte** Kosten beruhen auf einer belegten Zuordnung und bekanntem Preis. Die Statistik weist die drei Zustände getrennt aus. Ein sichtbarer Gesamtrechnungsbetrag und geschätzte Paketkosten werden nicht ohne Prüfung addiert. Eine verbindliche «wer schuldet wem»-Abrechnung ist eine spätere Funktion mit eigener Verteilregel.
+Ohne belastbare Bewertungsgrundlage sind Kosten **unbekannt**, niemals stillschweigend CHF 0.00. **Geschätzte** Kosten sind nur mit einer ausdrücklich gespeicherten Annahme und sichtbarer Kennzeichnung zulässig; sie zählen nicht als endgültig abgerechnete Kosten. **Bestätigte** Kosten beruhen auf einer belegten Zuordnung und bekanntem Preis. Die Statistik weist die drei Zustände getrennt aus. Der sichtbare Gesamtrechnungsbetrag wird nicht als interne Fahrtkosten übernommen oder zu Paketkosten addiert. Eine verbindliche «wer schuldet wem»-Abrechnung ist eine spätere Funktion mit eigener Verteilregel.
 
 ## Zeit, Duplikate und Buchungssicherheit
 

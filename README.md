@@ -9,6 +9,7 @@ Eine geplante iPhone-taugliche Web-App zur gemeinsamen Verwaltung von E-Scooter-
 - Persönliches Guthaben in **Minuten**, ergänzt um eine **Kostenübersicht in CHF**.
 - Jede Person lädt ihre eigenen Screenshots hoch. Die Zuordnung erfolgt über ihren eigenen Login.
 - Die App liest die Zeit direkt aus dem Bild; bei unklarer Erkennung ist eine Korrektur möglich.
+- Für eure Gruppe gilt: **Minutenverbrauch = Fahrzeit + Pausierzeit**. Die Freischaltgebühr wird ignoriert; die Kostenübersicht basiert auf den Minutenpaketen.
 - Die Gruppe startet beispielsweise mit Oskar, August und Max. Weitere Mitglieder können eingeladen werden; die Anzahl ist nicht auf drei festgelegt.
 - Admins können frei wählbare Minutenbeträge gutschreiben und nachvollziehbar korrigieren.
 - Alle Mitglieder sehen ihren Verbrauch sowie die gemeinsame Statistik und Buchungshistorie.
@@ -17,7 +18,7 @@ Eine geplante iPhone-taugliche Web-App zur gemeinsamen Verwaltung von E-Scooter-
 
 1. Die Web-App auf dem iPhone öffnen und mit dem persönlichen Zugang anmelden.
 2. Nach der Fahrt einen Screenshot aus der Fotomediathek auswählen.
-3. Die App liest Fahrtdauer, Datum und, soweit sichtbar, abgezogene Paketminuten und Zusatzkosten.
+3. Die App liest Fahrzeit und Pausierzeit aus den Fahrtdetails und addiert sie zum Minutenverbrauch. Datum und Fahrt-ID werden übernommen, soweit sichtbar. Freischaltgebühren werden ignoriert.
 4. Die Vorschau zeigt Person und erkannte Werte. In der ersten Version bestätigt die Person die Buchung mit einem Tippen.
 5. Minutenkonto, Fahrtenliste und Statistik werden gemeinsam aktualisiert.
 
@@ -56,6 +57,6 @@ Die konkrete OCR-Modellwahl erfolgt nach einem Test mit anonymisierten Dott-Scre
 
 ## Nächster Umsetzungsschritt
 
-Mit einigen anonymisierten Screenshotvarianten die erkennbaren Felder und den Unterschied zwischen Fahrtdauer und belasteten Paketminuten prüfen. Parallel können Login, Gruppenverwaltung, Minutenjournal und die mobile Oberfläche umgesetzt werden.
+Weitere anonymisierte Screenshotvarianten prüfen. Das bekannte Fahrtdetail-Layout enthält getrennte Fahr- und Pausierzeiten; die bestätigte Gruppenregel addiert beide. Parallel können Login, Gruppenverwaltung, Minutenjournal und die mobile Oberfläche umgesetzt werden.
 
 Dieses öffentliche Repository enthält ausschliesslich Planung. Echte Fahrtbilder, Einladungen, Zugangsdaten und Datenbankexporte gehören in private Systeme.

@@ -12,14 +12,22 @@ Ein Screenshot eines gemeinsam verwendeten Dott-Kontos kann die fahrende Person 
 
 | Feld | Verwendung |
 | --- | --- |
-| Fahrtdauer | Statistik und sichtbare Vorschau, intern in Sekunden |
-| Belastete Paketzeit | Minutenabzug, sofern eindeutig separat sichtbar |
+| Fahrzeit | Statistik und sichtbare Vorschau, intern in Sekunden |
+| Pausierzeit | Separates Feld, zählt ebenfalls zum Minutenverbrauch |
+| Separat angezeigte Paketzeit | Falls vorhanden, Abgleich mit der berechneten Summe; bei Widerspruch Prüfung |
 | Datum und Uhrzeit | Fahrtenliste, Zeitraumfilter und Duplikatprüfung |
 | Fahrt-ID | Erkennen bereits erfasster Fahrten, sofern sichtbar |
-| Einzelne Zusatzgebühren | Separate Kostenübersicht, sofern beschriftet |
-| Angezeigter Rechnungsbetrag | Beleginformation mit klarer Kennzeichnung; keine automatische Doppelzählung |
+| Freischaltgebühr, Gesamtbetrag und durchgestrichene Preise | Für die interne Abrechnung ignorieren; CHF-Kosten aus Paketpreis und Minutenverbrauch berechnen |
 
 Fehlende Felder werden als `null` ausgegeben. Dauer und belastete Zeit werden nicht miteinander vertauscht. Werte wie «12:30» müssen anhand der Beschriftung als Uhrzeit oder Dauer erkannt werden; das Format allein genügt nicht.
+
+## Bekanntes Fahrtdetail-Layout und Gruppenregel
+
+Die bereitgestellte Ansicht «Fahrtdetails» zeigt `Fahrzeit (14m)` und `Pausierzeit (1m)`. Nach ausdrücklicher Bestätigung durch den Nutzer zählen Pausen zum Paketverbrauch. Der Server berechnet daher **14 + 1 = 15 Minuten**. Die sichtbare Freischaltung von CHF 2.00 wird für die Gruppenabrechnung ignoriert; ebenso der Gesamtbetrag und die durchgestrichenen Tarifpreise. Diese Regel gilt für eure App und wird nicht als allgemeine Aussage über alle Dott-Tarife verstanden.
+
+Die vorherige Ansicht «Deine Fahrt» ohne geöffnete Details enthält keine Dauer und reicht deshalb nicht für die Minutenbuchung. Die App fordert zum Hochladen der geöffneten Fahrtdetails auf. Die iPhone-Statusleistenzeit ist kein Fahrtzeitpunkt. Im bekannten Detailbild fehlen Fahrtdatum und Fahrt-ID; fehlende Datumsangaben müssen sichtbar ergänzt werden, statt sie aus der Statusleiste oder dem Uploadzeitpunkt abzuleiten.
+
+Eine fehlende oder abgeschnittene Pausenzeile wird nicht automatisch zu null. Null ist nur bei explizitem Nullwert, manueller Bestätigung oder einem separat geprüften Layout ohne Pausenzeile zulässig. Widerspricht eine separat angezeigte Paketbelastung der Summe, geht der Vorgang zur Prüfung. Rundungen bei anderen Zeitformaten bleiben zu klären.
 
 ## Extraktionsvertrag
 
@@ -32,19 +40,18 @@ Der Worker erwartet strukturiertes JSON mit fester Schemaversion. Ein möglicher
   "ride_reference": null,
   "ride_date_local": null,
   "ride_time_local": null,
-  "duration_seconds": 700,
-  "charged_seconds": null,
-  "extra_fee_rappen": null,
-  "displayed_total_rappen": null,
-  "currency": null,
+  "duration_seconds": 840,
+  "pause_seconds": 60,
+  "displayed_charged_seconds": null,
   "evidence": {
-    "duration": "Fahrtdauer: 11 Min. 40 Sek."
+    "duration": "Fahrzeit (14m)",
+    "pause": "Pausierzeit (1m)"
   },
-  "review_reasons": ["charged_duration_missing"]
+  "review_reasons": ["ride_datetime_missing"]
 }
 ```
 
-Das Beispiel ist synthetisch. Sichtbare Belegtexte werden auf die benötigten Felder begrenzt. Schema- und Werteprüfung erfolgen im Servercode; ein formal gültiges Modellresultat ist noch keine fachlich gültige Buchung.
+Das Textbeispiel beschreibt die relevanten Felder des bereitgestellten Layouts; das Originalbild wird nicht veröffentlicht. `charged_seconds` wird vom Server als 900 berechnet, nicht vom Modell geraten. Sichtbare Belegtexte werden auf die benötigten Felder begrenzt. Schema- und Werteprüfung erfolgen im Servercode; ein formal gültiges Modellresultat ist noch keine fachlich gültige Buchung.
 
 Bildinhalte sind nicht vertrauenswürdige Eingaben. Darin enthaltene Anweisungen werden als Bildtext behandelt und können weder Tools aufrufen noch Identitäten, Buchungsregeln oder Berechtigungen verändern.
 
@@ -89,7 +96,9 @@ Ein kleiner, bewusst variierter Satz anonymisierter Screenshots sollte unter and
 
 - Unterschiedliche Layouts, Spracheinstellungen und Hell-/Dunkeldarstellung, soweit tatsächlich verwendet.
 - Sekundenangaben, längere Fahrten und separat ausgewiesene Paketbelastung.
-- Zusatzkosten, fehlende Felder, unscharfe oder zugeschnittene Bilder.
+- Fahrzeit 14 Minuten plus Pause 1 Minute: genau 15 Minuten Verbrauch; Freischaltung und durchgestrichene Preise beeinflussen weder Minutenabzug noch interne Kosten.
+- Fehlende Pausenzeile, explizit null Minuten Pause, unscharfe oder zugeschnittene Bilder.
+- Übersicht ohne Details: keine Buchung; Handy-Uhrzeit niemals als Fahrtzeit übernehmen.
 - Dasselbe Bild zweimal und dieselbe Fahrt in verschiedenen Bildausschnitten.
 - Eine andere Bildschirmansicht, die gar keine abgeschlossene Fahrt zeigt.
 - Unvollständige Datumsangaben und Uhrzeiten rund um einen Tageswechsel.

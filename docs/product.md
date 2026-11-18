@@ -29,7 +29,7 @@ Jede Person erhält einen eigenen Zugang. Deaktivierte Mitglieder verlieren den 
 
 1. Die Person meldet sich an und wählt **Fahrt hinzufügen**.
 2. Sie lädt einen Screenshot ihrer Fahrt hoch. Die App zeigt den Fortschritt.
-3. Die Erkennung liest die sichtbaren Angaben: Fahrtdatum, Uhrzeit, Fahrtdauer und, soweit vorhanden, abgezogene Paketminuten, Preis und Fahrt-ID.
+3. Die Erkennung liest Fahrzeit und Pausierzeit aus den Fahrtdetails. Die App addiert beide zum Minutenverbrauch. Fahrtdatum, Uhrzeit und Fahrt-ID werden übernommen, soweit sichtbar; die Handy-Uhrzeit gilt nicht als Fahrtzeit.
 4. Die App zeigt eine Vorschau mit der angemeldeten Person und den erkannten Werten. Fehlende oder widersprüchliche Angaben werden kenntlich gemacht.
 5. In der ersten Version bestätigt oder korrigiert die Person die Vorschau. Erst danach entstehen Fahrt und Minutenabbuchung.
 6. Guthaben, Fahrtenliste und Statistik werden aktualisiert. Die gespeicherten Werte und ihre Herkunft bleiben nachvollziehbar.
@@ -46,7 +46,8 @@ Später dürfen eindeutig erkannte Screenshots automatisch verbucht werden, soba
 - Ein zu kleiner Saldo verhindert das Erfassen einer tatsächlich gefahrenen Fahrt nicht. Der negative Saldo bleibt sichtbar und kann ausgeglichen werden.
 - Paketkäufe enthalten mindestens Minutenmenge, Preis in CHF, Kaufdatum und zahlende Person. Ein Ablaufdatum wird erfasst, wenn es bekannt und relevant ist.
 - Die Kostenübersicht zeigt Paketkäufe und Zahlungen getrennt vom errechneten Verbrauchswert. Ohne belastbare Bewertungsgrundlage erscheint «noch nicht zugeordnet». Schätzungen benötigen eine ausdrücklich gespeicherte Annahme und sichtbare Kennzeichnung; bestätigte Kosten beruhen auf einer belegten Paketzuordnung und bekanntem Preis. Diese Zustände werden getrennt ausgewiesen.
-- Fahrtdauer und belastete Paketminuten bleiben getrennte Felder. Sekunden werden erhalten; Rundung, Entsperrgebühren und weitere Kosten werden erst anhand echter Belege spezifiziert.
+- Fahrzeit, Pausierzeit und Minutenverbrauch bleiben getrennte Felder. Für eure Gruppe gilt ausdrücklich **Verbrauch = Fahrzeit + Pausierzeit**: 14 Minuten Fahrt und 1 Minute Pause belasten 15 Minuten. Sekunden werden erhalten; zusätzliche Rundungsregeln werden nicht erfunden.
+- Die Freischaltgebühr wird auf Wunsch der Gruppe vollständig aus der internen Abrechnung ausgeschlossen. Auch der angezeigte Gesamtpreis und durchgestrichene Preise werden nicht als persönliche Fahrtkosten übernommen. Die CHF-Übersicht basiert auf Paketpreisen und verbrauchten Minuten.
 
 ## Seiten der App
 
@@ -54,9 +55,9 @@ Später dürfen eindeutig erkannte Screenshots automatisch verbucht werden, soba
 | --- | --- |
 | Übersicht | Eigenes Minutenguthaben, kürzliche Fahrten, offene Prüfungen, schneller Screenshot-Upload. |
 | Fahrt hinzufügen | Fotoauswahl, Erkennungsstatus, Vorschau, Korrektur und Bestätigung. |
-| Fahrten | Filter nach Zeitraum und Person; Detailansicht mit Fahrtdauer, Verbrauch, Kostenstatus und Buchungsbezug. |
+| Fahrten | Filter nach Zeitraum und Person; Detailansicht mit Fahrzeit, Pausierzeit, Verbrauch, Kostenstatus und Buchungsbezug. |
 | Guthaben und Pakete | Persönliches Buchungsjournal, Gruppenpakete und CHF-Übersicht; administrative Gutschriften und Korrekturen. |
-| Statistik | Fahrtenzahl, gesamte Fahrtdauer, verbrauchte Minuten und Durchschnitt pro Fahrt; Vergleich nach Person und Zeitraum. |
+| Statistik | Fahrtenzahl, Fahrzeit, Pausierzeit, verbrauchte Minuten und Durchschnitt pro Fahrt; Vergleich nach Person und Zeitraum. |
 | Mitglieder | Einladungen, Rollen und Aktivstatus; keine Beschränkung auf die drei Beispielpersonen. |
 
 Statistiken verwenden nur bestätigte beziehungsweise regelbasiert automatisch verbuchte Fahrten. Offene Prüfungen werden separat gezählt. Stornierte oder korrigierte Vorgänge dürfen den Verbrauch nicht doppelt erhöhen. Zeiträume werden in `Europe/Zurich` angezeigt und abgegrenzt.
@@ -71,8 +72,8 @@ Statistiken verwenden nur bestätigte beziehungsweise regelbasiert automatisch v
 
 ## Vor der Umsetzung anhand von Belegen festzulegen
 
-- Welche Dott-Screenshots sind vorhanden, und zeigen sie Fahrtdauer, Paketverbrauch oder beides?
-- Welche belegbaren Abrechnungsregeln und Gebühren gelten für eure Pakete?
+- Wie sehen weitere Screenshotvarianten aus, insbesondere ohne Pause oder mit Sekundenangaben? Das bereits bekannte Layout ist in der [Screenshot-Erkennung](screenshot-recognition.md) beschrieben.
+- Welche Rundung gilt gegebenenfalls bei Sekundenangaben? Die Addition der Fahr- und Pausierzeit sowie das Ignorieren der Freischaltgebühr sind bereits festgelegt.
 - Wie werden Fahrten mehreren gleichzeitig aktiven Paketen zugeordnet und nicht verbrauchte Minuten behandelt?
 
 Diese Punkte blockieren die Planung nicht, müssen aber geklärt sein, bevor die App Minuten oder CHF-Werte nach solchen Regeln automatisch verbucht.

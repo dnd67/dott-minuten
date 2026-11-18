@@ -6,7 +6,7 @@
 
 Ein Testset aus echten, anonymisierten Fahrtscreenshots erstellen. Originale mit personenbezogenen Angaben gehören nicht in das öffentliche Repository. Das Testset soll die tatsächlich vorkommenden Sprachen und Layouts sowie mindestens folgende Fälle enthalten: normale Fahrt, Sekundenangaben, fehlendes Feld, schlechter Zuschnitt, identische Datei, veränderte Kopie derselben Fahrt und zwei verschiedene Fahrten mit ähnlichen Werten.
 
-Für jedes Beispiel werden erwartete Werte und zulässige Ergebnisse manuell festgehalten. Ein zurückgehaltener Teil dient der unabhängigen Prüfung der Erkennung. Fahrtdauer, Paketverbrauch und CHF-Kosten werden getrennt annotiert. Dott-Rundungsregeln werden nur übernommen, wenn sie aus Belegen oder verlässlichen Produktangaben hervorgehen.
+Für jedes Beispiel werden erwartete Werte und zulässige Ergebnisse manuell festgehalten. Ein zurückgehaltener Teil dient der unabhängigen Prüfung der Erkennung. Fahrzeit, Pausierzeit, Paketverbrauch und CHF-Kosten werden getrennt annotiert. Bereits bestätigt ist: **Paketverbrauch = Fahrzeit + Pausierzeit; Freischaltgebühren werden ignoriert.** Weitere Dott-Rundungsregeln werden nur übernommen, wenn sie aus Belegen oder verlässlichen Produktangaben hervorgehen.
 
 **Abnahme:** Die unterstützten Layouts, benötigten Felder und Abrechnungsregeln sind dokumentiert. Für unklare oder unbekannte Angaben ist festgelegt, wann eine manuelle Prüfung nötig ist. Es existieren keine stillen Annahmen über Minutenrundung oder Gebühren.
 
@@ -32,6 +32,8 @@ Duplikate zuerst anhand einer sichtbaren Fahrt-ID prüfen, soweit vorhanden. Zus
 **Abnahme:**
 
 - Die Erkennung wird gegen die annotierten Screenshots geprüft; Ergebnisse und bekannte Grenzen sind dokumentiert.
+- Das bekannte Beispiel mit 14 Minuten Fahrzeit und 1 Minute Pause ergibt genau 15 Minuten Verbrauch. Freischaltung, Gesamtbetrag und durchgestrichene Preise werden nicht als interne Fahrtkosten übernommen.
+- Eine fehlende Pausenzeile wird nicht ungeprüft als null gewertet. Eine Übersicht ohne Zeitangaben fordert die Fahrtdetails an. Die Statusleistenzeit ersetzt keinen Fahrtzeitpunkt.
 - Fehlende, widersprüchliche oder ungültige Pflichtwerte führen zur Prüfung statt zu einer Abbuchung.
 - Doppelklick auf «Bestätigen», Wiederholung nach Netzunterbruch und erneute Verarbeitung desselben Auftrags erzeugen jeweils genau eine Fahrt mit genau einer Abbuchung.
 - Ein Timeout zeigt einen wiederaufnehmbaren Status. Ein fehlgeschlagener oder abgebrochener Upload verändert kein Guthaben.
