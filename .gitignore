@@ -1,0 +1,21 @@
+# Lokale Geheimnisse und Umgebungsdateien
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Private Fahrtbilder, Exporte und lokale Testdaten
+/private/
+/screenshots/
+/uploads/
+/backups/
+*.dump
+
+# Entwicklungsartefakte für die spätere App
+node_modules/
+.next/
+.vercel/
+coverage/
+*.log
+.DS_Store
