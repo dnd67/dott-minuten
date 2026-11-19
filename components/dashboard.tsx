@@ -29,7 +29,9 @@ import {
   RefreshCw,
   Share2,
   ShieldCheck,
+  Smartphone,
   Sparkles,
+  Sun,
   Ticket,
   TrendingUp,
   Users,
@@ -68,8 +70,17 @@ import {
   type ActiveUnlock,
   type Spot,
 } from "@/lib/location";
+import { DynamicIslandDialog } from "./dynamic-island-dialog";
 import { FeedbackDialog } from "./feedback-dialog";
 import { LocationStats } from "./location-stats";
+import {
+  buildLiveRidePayload,
+  buildStartLiveActivityUrl,
+  buildStopLiveActivityUrl,
+  computeLiveRideMetrics,
+  loadAutoShortcutEnabled,
+  saveAutoShortcutEnabled,
+} from "@/lib/live-activity";
 import {
   isOnboardingDone,
   markOnboardingDone,
@@ -182,11 +193,22 @@ export function Dashboard(p: Props) {
   const [feedbackOpen, setFeedbackOpen] = useState<{ motion: boolean } | null>(
     null,
   );
+  const [islandGuideOpen, setIslandGuideOpen] = useState<{
+    motion: boolean;
+  } | null>(null);
+  const [autoShortcut, setAutoShortcut] = useState(false);
+  const [wakeLockOn, setWakeLockOn] = useState(false);
+  const [wakeLockSupported, setWakeLockSupported] = useState(false);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const [activeUnlock, setActiveUnlock] = useState<ActiveUnlock | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
 
   useEffect(() => {
     setTourBannerHidden(isOnboardingDone());
+    setAutoShortcut(loadAutoShortcutEnabled());
+    setWakeLockSupported(
+      typeof navigator !== "undefined" && "wakeLock" in navigator,
+    );
   }, []);
 
   useEffect(() => {
@@ -203,9 +225,42 @@ export function Dashboard(p: Props) {
   useEffect(() => {
     if (!activeUnlock) return;
     setNowTick(Date.now());
-    const id = setInterval(() => setNowTick(Date.now()), 15000);
+    const id = setInterval(() => setNowTick(Date.now()), 1000);
     return () => clearInterval(id);
   }, [activeUnlock]);
+
+  useEffect(() => {
+    if (!activeUnlock || !wakeLockOn) {
+      void wakeLockRef.current?.release().catch(() => {});
+      wakeLockRef.current = null;
+      return;
+    }
+    let alive = true;
+    const acquire = async () => {
+      if (
+        !alive ||
+        typeof navigator === "undefined" ||
+        !("wakeLock" in navigator)
+      )
+        return;
+      try {
+        wakeLockRef.current = await navigator.wakeLock.request("screen");
+      } catch {
+        if (alive) setWakeLockOn(false);
+      }
+    };
+    void acquire();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void acquire();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      alive = false;
+      document.removeEventListener("visibilitychange", onVisible);
+      void wakeLockRef.current?.release().catch(() => {});
+      wakeLockRef.current = null;
+    };
+  }, [activeUnlock, wakeLockOn]);
 
   const me = data.members.find((m) => m.user_id === p.userId && m.active);
   const admin = me?.role === "admin";
@@ -282,14 +337,44 @@ export function Dashboard(p: Props) {
     setModal({ kind, motion: clickCount > 0 });
   }
 
-  const unlockElapsedMinutes = activeUnlock
-    ? Math.max(
-        1,
-        Math.round(
-          (nowTick - new Date(activeUnlock.startedAt).getTime()) / 60000,
-        ),
-      )
-    : 0;
+  const costPerSecondRappen = useMemo(() => {
+    const totalSec = data.packages.reduce((n, pkg) => n + pkg.seconds, 0);
+    const totalPrice = data.packages.reduce(
+      (n, pkg) => n + pkg.price_rappen,
+      0,
+    );
+    return totalSec > 0 ? totalPrice / totalSec : null;
+  }, [data.packages]);
+
+  const activeRiderNames = useMemo(() => {
+    const meName = me?.display_name ?? "Du";
+    const coNames = (activeUnlock?.coRiderIds ?? []).map(
+      (id) => data.members.find((m) => m.id === id)?.display_name ?? "Mitglied",
+    );
+    return [meName, ...coNames];
+  }, [activeUnlock?.coRiderIds, data.members, me?.display_name]);
+
+  const liveMetrics = activeUnlock
+    ? computeLiveRideMetrics({
+        startedAt: activeUnlock.startedAt,
+        nowMs: nowTick,
+        ownBalanceSeconds: own.balance,
+        riderCount: activeRiderNames.length,
+        costPerSecondRappen,
+      })
+    : null;
+
+  const livePayload = buildLiveRidePayload({
+    riderNames: activeRiderNames,
+    startLabel: activeUnlock?.startLabel || undefined,
+    remainingSeconds: liveMetrics
+      ? liveMetrics.projectedBalanceSeconds
+      : own.balance,
+    groupName: data.group.name,
+    startedAt: activeUnlock?.startedAt ?? new Date(nowTick).toISOString(),
+  });
+
+  const unlockElapsedMinutes = liveMetrics?.elapsedMinutesRounded ?? 0;
 
   function finishActiveUnlock(clickCount: number) {
     if (!activeUnlock) return;
@@ -755,6 +840,38 @@ export function Dashboard(p: Props) {
               </button>
             </div>
           )}
+          {activeUnlock && liveMetrics && tab !== "overview" && (
+            <div
+              className="dynamic-pill-bar"
+              role="status"
+              aria-label="Aktive Scooter-Fahrt"
+            >
+              <button
+                type="button"
+                className="dynamic-pill-main"
+                onClick={() => navigate("overview")}
+              >
+                <span className="unlock-pulse" aria-hidden="true" />
+                <strong className="dynamic-pill-clock">
+                  {liveMetrics.elapsedClock}
+                </strong>
+                <span className="dynamic-pill-meta">
+                  {activeRiderNames.join(" & ")}
+                  {activeUnlock.startLabel
+                    ? ` · ${activeUnlock.startLabel}`
+                    : ""}
+                  {` · ${minutes(liveMetrics.projectedBalanceSeconds)} Min. übrig`}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="button primary compact-btn"
+                onClick={(e) => finishActiveUnlock(e.detail)}
+              >
+                <Check size={15} /> Abschliessen
+              </button>
+            </div>
+          )}
           {tab !== "overview" && (
             <div className="page-heading">
               <div>
@@ -833,64 +950,98 @@ export function Dashboard(p: Props) {
                 </section>
               )}
 
-              {activeUnlock && (
+              {activeUnlock && liveMetrics && (
                 <section
                   className="unlock-live-card"
                   role="status"
                   aria-live="polite"
                 >
-                  <div className="unlock-live-info">
-                    <span className="unlock-pulse" aria-hidden="true" />
-                    <div>
-                      <strong>
-                        Scooter entsperrt · ca. {unlockElapsedMinutes} Min.
-                        unterwegs
-                      </strong>
-                      <small>
-                        Gestartet {dateLabel(activeUnlock.startedAt, true)}
-                        {activeUnlock.startLabel
-                          ? ` · Start: ${activeUnlock.startLabel}`
-                          : " · Ohne Startort"}
-                        {" · Kein Hintergrund-GPS aktiv"}
-                      </small>
-                      {(activeUnlock.coRiderIds?.length ?? 0) > 0 && (
-                        <small className="unlock-shared-summary">
-                          <Users size={13} /> Gemeinsam auf dem Scooter:{" "}
-                          {[
-                            me?.display_name ?? "Du",
-                            ...(activeUnlock.coRiderIds ?? []).map(
-                              (id) => member(id)?.display_name ?? "Mitglied",
-                            ),
-                          ].join(" & ")}{" "}
-                          (Zeit wird geteilt)
+                  <div className="unlock-live-head">
+                    <div className="unlock-live-info">
+                      <span className="unlock-pulse" aria-hidden="true" />
+                      <div>
+                        <strong>
+                          Scooter entsperrt ·{" "}
+                          <span className="live-clock">
+                            {liveMetrics.elapsedClock}
+                          </span>{" "}
+                          aktiv
+                        </strong>
+                        <small>
+                          Gestartet {dateLabel(activeUnlock.startedAt, true)}
+                          {activeUnlock.startLabel
+                            ? ` · Start: ${activeUnlock.startLabel}`
+                            : " · Ohne Startort"}
+                          {" · Kein Hintergrund-GPS aktiv"}
                         </small>
-                      )}
-                      {otherActiveMembers.length > 0 && (
-                        <div className="unlock-coriders">
-                          <span>Mit auf dem Scooter:</span>
-                          <div className="chip-row">
-                            {otherActiveMembers.map((m) => {
-                              const active = (
-                                activeUnlock.coRiderIds ?? []
-                              ).includes(m.id);
-                              return (
-                                <button
-                                  key={m.id}
-                                  type="button"
-                                  className={`chip ${active ? "active" : ""}`}
-                                  aria-pressed={active}
-                                  onClick={() => toggleUnlockCoRider(m.id)}
-                                >
-                                  {active ? "✓ " : "+ "}
-                                  {m.display_name}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
+                      </div>
+                    </div>
+                    <span className="live-pill-badge">LIVE</span>
+                  </div>
+
+                  <div className="unlock-metrics">
+                    <div>
+                      <small>
+                        {activeRiderNames.length > 1
+                          ? `Dein Anteil (÷${activeRiderNames.length})`
+                          : "Aktuelle Dauer"}
+                      </small>
+                      <strong>
+                        {minutes(liveMetrics.ownShareSeconds)} Min.
+                      </strong>
+                    </div>
+                    <div>
+                      <small>Danach übrig</small>
+                      <strong>
+                        {minutes(liveMetrics.projectedBalanceSeconds)} Min.
+                      </strong>
+                    </div>
+                    <div>
+                      <small>
+                        {liveMetrics.estimatedCostRappen !== null
+                          ? "Geschätzter Anteil"
+                          : "Mitfahrende"}
+                      </small>
+                      <strong>
+                        {liveMetrics.estimatedCostRappen !== null
+                          ? `≈ ${chf(liveMetrics.estimatedCostRappen)}`
+                          : `${activeRiderNames.length} Pers.`}
+                      </strong>
                     </div>
                   </div>
+
+                  {(activeUnlock.coRiderIds?.length ?? 0) > 0 && (
+                    <small className="unlock-shared-summary">
+                      <Users size={13} /> Gemeinsam auf dem Scooter:{" "}
+                      {activeRiderNames.join(" & ")} (Zeit wird geteilt)
+                    </small>
+                  )}
+
+                  {otherActiveMembers.length > 0 && (
+                    <div className="unlock-coriders">
+                      <span>Mit auf dem Scooter:</span>
+                      <div className="chip-row">
+                        {otherActiveMembers.map((m) => {
+                          const active = (
+                            activeUnlock.coRiderIds ?? []
+                          ).includes(m.id);
+                          return (
+                            <button
+                              key={m.id}
+                              type="button"
+                              className={`chip ${active ? "active" : ""}`}
+                              aria-pressed={active}
+                              onClick={() => toggleUnlockCoRider(m.id)}
+                            >
+                              {active ? "✓ " : "+ "}
+                              {m.display_name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="unlock-live-actions">
                     <button
                       type="button"
@@ -899,10 +1050,38 @@ export function Dashboard(p: Props) {
                     >
                       <Check size={16} /> Fahrt abschliessen
                     </button>
+                    <a
+                      href={buildStartLiveActivityUrl(livePayload)}
+                      className="button secondary compact-btn"
+                      title="Startet deinen iPhone-Kurzbefehl «Minutenclub Live» für Dynamic Island & Sperrbildschirm"
+                    >
+                      <Smartphone size={15} /> Dynamic Island
+                    </a>
+                    <button
+                      type="button"
+                      className="button ghost compact-btn"
+                      onClick={(e) =>
+                        setIslandGuideOpen({ motion: e.detail > 0 })
+                      }
+                    >
+                      Einrichten
+                    </button>
+                    {wakeLockSupported && (
+                      <button
+                        type="button"
+                        className={`button ghost compact-btn ${wakeLockOn ? "wake-active" : ""}`}
+                        aria-pressed={wakeLockOn}
+                        onClick={() => setWakeLockOn((v) => !v)}
+                      >
+                        <Sun size={15} />{" "}
+                        {wakeLockOn ? "Display bleibt wach" : "Display wach"}
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="text-link"
                       onClick={() => {
+                        setWakeLockOn(false);
                         clearActiveUnlock();
                         setActiveUnlock(null);
                       }}
@@ -1659,6 +1838,34 @@ export function Dashboard(p: Props) {
                   </div>
                   <div className="preference-row">
                     <div>
+                      <strong>Dynamic Island &amp; Sperrbildschirm</strong>
+                      <small>
+                        iPhone-Kurzbefehl für Live-Timer und Fahrt-Eckdaten
+                        einrichten
+                      </small>
+                    </div>
+                    <div className="preference-buttons">
+                      <button
+                        type="button"
+                        className="button secondary compact-btn"
+                        onClick={(e) =>
+                          setIslandGuideOpen({ motion: e.detail > 0 })
+                        }
+                      >
+                        <Smartphone size={15} /> Einrichten
+                      </button>
+                      {activeUnlock && (
+                        <a
+                          href={buildStopLiveActivityUrl()}
+                          className="button ghost compact-btn"
+                        >
+                          Island stoppen
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                  <div className="preference-row">
+                    <div>
                       <strong>Rechtliches &amp; Datenschutz</strong>
                       <small>
                         Datenschutzerklärung (CH DSG), Haftungsausschluss &amp;
@@ -1765,10 +1972,11 @@ export function Dashboard(p: Props) {
             setRideSeed(null);
           }}
           onStartUnlock={(spot, coRiderIds) => {
+            const startedAt = new Date().toISOString();
             const next: ActiveUnlock = {
               groupId: data.group.id,
               userId: p.userId,
-              startedAt: new Date().toISOString(),
+              startedAt,
               startLabel: spot.label.trim(),
               startLat: spot.lat,
               startLng: spot.lng,
@@ -1776,8 +1984,27 @@ export function Dashboard(p: Props) {
             };
             saveActiveUnlock(next);
             setActiveUnlock(next);
+            if (autoShortcut) {
+              const names = [
+                me?.display_name ?? "Du",
+                ...coRiderIds.map(
+                  (id) =>
+                    data.members.find((m) => m.id === id)?.display_name ??
+                    "Mitglied",
+                ),
+              ];
+              const payload = buildLiveRidePayload({
+                riderNames: names,
+                startLabel: spot.label.trim() || undefined,
+                remainingSeconds: own.balance,
+                groupName: data.group.name,
+                startedAt,
+              });
+              window.location.href = buildStartLiveActivityUrl(payload);
+            }
           }}
           onFinishUnlock={() => {
+            setWakeLockOn(false);
             clearActiveUnlock();
             setActiveUnlock(null);
           }}
@@ -1814,6 +2041,18 @@ export function Dashboard(p: Props) {
           remoteError={p.error}
           onSave={p.mutate}
           onClose={() => setFeedbackOpen(null)}
+        />
+      )}
+      {islandGuideOpen && (
+        <DynamicIslandDialog
+          motion={islandGuideOpen.motion}
+          samplePayload={livePayload}
+          autoShortcut={autoShortcut}
+          onToggleAutoShortcut={(next) => {
+            setAutoShortcut(next);
+            saveAutoShortcutEnabled(next);
+          }}
+          onClose={() => setIslandGuideOpen(null)}
         />
       )}
     </div>

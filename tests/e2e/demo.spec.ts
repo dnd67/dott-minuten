@@ -477,6 +477,37 @@ test("Gemeinsame Fahrt auf dem gleichen Scooter während aktiver Fahrt auswähle
   await expect(
     page.getByText(/Gemeinsam auf dem Scooter: Oskar & Max/),
   ).toBeVisible();
+  await expect(page.locator(".live-clock")).toHaveText(/\d{2}:\d{2}/);
+  await expect(
+    page
+      .locator(".unlock-live-card")
+      .getByRole("link", { name: "Dynamic Island" }),
+  ).toHaveAttribute(
+    "href",
+    /^shortcuts:\/\/run-shortcut\?name=Minutenclub%20Live/,
+  );
+
+  // Einrichtungs-Dialog für Dynamic Island öffnen & prüfen, dann wieder schliessen
+  await page
+    .locator(".unlock-live-card")
+    .getByRole("button", { name: "Einrichten" })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Dynamic Island & Sperrbildschirm" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Schliessen", exact: true }).click();
+
+  // In anderen Tab wechseln -> schwebende In-App Dynamic Pill erscheint mit Timer
+  await page
+    .locator(".mobile-nav")
+    .getByRole("button", { name: "Fahrten", exact: true })
+    .click();
+  await expect(page.locator(".dynamic-pill-bar")).toBeVisible();
+  await expect(page.locator(".dynamic-pill-bar")).toContainText("Oskar & Max");
+  await page
+    .locator(".mobile-nav")
+    .getByRole("button", { name: "Übersicht", exact: true })
+    .click();
 
   // 3. Fahrt abschliessen -> Max ist bereits vorausgewählt, 14 + 1 = 15 Min. -> je 7,5 Min.
   await page.getByRole("button", { name: "Fahrt abschliessen" }).click();

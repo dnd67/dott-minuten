@@ -12,6 +12,12 @@ import {
 import { demoSnapshot, demoAction } from "../lib/demo";
 import { computeRideInsights, resolvePlaceLabel } from "../lib/location";
 import { extractInviteToken } from "../lib/accounts";
+import {
+  buildLiveRidePayload,
+  buildStartLiveActivityUrl,
+  computeLiveRideMetrics,
+  formatElapsedClock,
+} from "../lib/live-activity";
 
 test("Fahrt und Pause werden addiert; Freischaltung gehört nicht zum Buchungsmodell", () => {
   assert.deepEqual(rideDraft("14", "1"), {
@@ -272,4 +278,42 @@ test("Geteilte Fahrt auf dem gleichen Scooter teilt Zeit exakt auf, gruppiert An
   assert.equal(summary(afterVoid, "demo-0").balance, oskarBefore);
   assert.equal(summary(afterVoid, "demo-2").balance, maxBefore);
   assert.equal(summary(afterVoid).inventory, groupBefore);
+});
+
+test("Live-Fahrt-Metriken und iPhone-Kurzbefehl-URL für Dynamic Island werden korrekt berechnet", () => {
+  assert.equal(formatElapsedClock(0), "00:00");
+  assert.equal(formatElapsedClock(252), "04:12");
+  assert.equal(formatElapsedClock(3735), "1:02:15");
+
+  const start = "2026-11-19T20:00:00.000Z";
+  const now = new Date("2026-11-19T20:10:00.000Z").getTime();
+  const metrics = computeLiveRideMetrics({
+    startedAt: start,
+    nowMs: now,
+    ownBalanceSeconds: 12000, // 200 Min.
+    riderCount: 2,
+    costPerSecondRappen: 15 / 60, // 15 Rp./Min.
+  });
+  assert.equal(metrics.elapsedClock, "10:00");
+  assert.equal(metrics.ownShareSeconds, 300); // 5 Min. pro Person
+  assert.equal(metrics.projectedBalanceSeconds, 11700); // 195 Min. übrig
+  assert.equal(metrics.estimatedCostRappen, 75); // CHF 0.75
+
+  const payload = buildLiveRidePayload({
+    riderNames: ["Oskar", "Max"],
+    startLabel: "Zürich HB",
+    remainingSeconds: 11700,
+    groupName: "Zürich Crew",
+    startedAt: start,
+  });
+  assert.equal(payload.title, "Dott · Oskar & Max (÷2)");
+  assert.match(payload.subtitle, /Zürich HB/);
+  assert.match(payload.subtitle, /195 Min\. übrig/);
+
+  const url = buildStartLiveActivityUrl(payload);
+  assert.ok(
+    url.startsWith(
+      "shortcuts://run-shortcut?name=Minutenclub%20Live&input=text&text=",
+    ),
+  );
 });

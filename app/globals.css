@@ -2633,3 +2633,188 @@ tr.voided td {
   gap: 0.4rem;
   margin: -0.45rem 0 0.85rem;
 }
+
+/* Live-Fahrt Cockpit, In-App Dynamic Pill & Dynamic Island Kurzbefehl-Dialog */
+.unlock-live-card {
+  display: grid;
+  gap: 0.75rem;
+}
+.unlock-live-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.live-clock,
+.dynamic-pill-clock,
+.island-preview-clock {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.live-pill-badge {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--positive) 16%, transparent);
+  color: var(--positive);
+}
+.unlock-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+.unlock-metrics > div {
+  padding: 0.55rem 0.68rem;
+  border-radius: 0.78rem;
+  background: var(--inset);
+  min-width: 0;
+}
+.unlock-metrics small {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--secondary);
+}
+.unlock-metrics strong {
+  display: block;
+  margin-top: 0.14rem;
+  font-size: 0.94rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.wake-active {
+  color: var(--tint) !important;
+  border-color: var(--tint) !important;
+}
+.dynamic-pill-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.52rem 0.62rem 0.52rem 0.9rem;
+  margin-bottom: 0.95rem;
+  border-radius: 999px;
+  background: #111114;
+  color: #f6f6f8;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.dynamic-pill-main {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  flex: 1 1 11rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0.2rem 0;
+  text-align: left;
+  cursor: pointer;
+}
+.dynamic-pill-clock {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #4ade80;
+  flex: none;
+}
+.dynamic-pill-meta {
+  font-size: 0.8rem;
+  color: rgba(246, 246, 248, 0.78);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.island-dialog .dialog-inner {
+  max-width: 34rem;
+}
+.island-preview-card {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.85rem 1rem;
+  margin: 0.6rem 0 0.9rem;
+  border-radius: 1.2rem;
+  background: #0e0e11;
+  color: #f6f6f8;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.island-preview-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+.island-preview-pill strong {
+  flex: 1;
+  font-size: 0.9rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.island-preview-clock {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #4ade80;
+  flex: none;
+}
+.island-preview-card small {
+  color: rgba(246, 246, 248, 0.74);
+  font-size: 0.78rem;
+}
+.island-steps {
+  margin: 0 0 0.9rem;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 0.65rem;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--secondary);
+}
+.island-steps strong {
+  color: var(--ink);
+}
+.island-steps code {
+  font-family: var(--mono);
+  font-size: 0.82em;
+  padding: 0.12rem 0.35rem;
+  border-radius: 0.35rem;
+  background: var(--inset);
+  color: var(--ink);
+}
+.copy-chip-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+}
+.island-keys {
+  display: grid;
+  gap: 0.28rem;
+  margin-top: 0.35rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.65rem;
+  background: var(--inset);
+  font-size: 0.79rem;
+}
+.island-auto-toggle {
+  margin-bottom: 0.95rem;
+}
+.island-test-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+@media (max-width: 30rem) {
+  .unlock-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .unlock-metrics > div:last-child {
+    grid-column: 1 / -1;
+  }
+  .dynamic-pill-bar {
+    border-radius: 1.15rem;
+  }
+}
