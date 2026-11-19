@@ -375,16 +375,6 @@ strong {
 .nav-item:hover {
   background: #f4f6f2;
 }
-.nav-item small {
-  margin-left: auto;
-  background: #e6ece0;
-  color: #6d7f63;
-  min-width: 19px;
-  text-align: center;
-  border-radius: 5px;
-  font-size: 10px;
-  padding: 2px;
-}
 .sidebar-bottom {
   margin-top: auto;
   padding-top: 40px;
@@ -479,8 +469,7 @@ strong {
   align-items: center;
   gap: 6px;
 }
-.sync i,
-.light-pill i {
+.sync i {
   height: 5px;
   width: 5px;
   border-radius: 50%;
@@ -520,15 +509,34 @@ strong {
   gap: 20px;
   margin-bottom: 25px;
 }
+.metric-grid.overview-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.overview-heading {
+  margin-bottom: 14px;
+  font-size: clamp(1.25rem, 2.4vw, 1.625rem);
+  letter-spacing: -0.6px;
+  overflow-wrap: anywhere;
+}
 .balance-card {
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px 30px;
   background: var(--green);
   color: white;
   border-radius: 15px;
-  padding: 22px 24px;
-  min-height: 196px;
+  padding: clamp(16px, 3vw, 32px);
+  margin-bottom: 18px;
+}
+.balance-card > div {
+  min-width: 0;
+}
+.balance-card h2 {
+  color: #d2dfd5;
+  font-size: 15px;
+  letter-spacing: 0;
 }
 .card-label {
   display: flex;
@@ -537,71 +545,33 @@ strong {
   font-size: 12px;
   font-weight: 500;
 }
-.balance-card .card-label {
-  color: #d2dfd5;
-}
-.round-icon {
-  display: flex;
-  background: #ffffff12;
-  padding: 8px;
-  border-radius: 50%;
-  color: #c6d7c7;
-}
 .balance-number {
-  font-size: 49px;
-  line-height: 1.05;
-  letter-spacing: -2px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 14px;
+  margin-top: 7px;
   font-family: "Manrope", sans-serif;
-  font-weight: 650;
-  margin: 5px 0 20px;
+}
+.balance-number > strong {
+  min-width: 0;
+  font-size: clamp(3.75rem, calc(2rem + 7vw), 6.5rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.05em;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
 }
 .balance-number > span {
-  font-size: 13px;
-  font-weight: 450;
-  letter-spacing: 0;
-  color: #d1ded3;
-  margin-left: 10px;
-}
-.balance-bottom {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.light-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 9px;
-  background: #ffffff0f;
-  padding: 6px 9px;
-  border: 1px solid #ffffff13;
-  border-radius: 6px;
   color: #d4e2d4;
+  font-size: 14px;
 }
-.light-pill i {
-  background: #c2e88c;
+.balance-card .button {
+  background: #ffffff14;
+  border: 1px solid #ffffff50;
 }
-.balance-bottom > svg {
-  color: #c4e6ae;
-}
-.card-orbit {
-  position: absolute;
-  border: 1px solid #ffffff0d;
-  border-radius: 50%;
-  z-index: -1;
-  pointer-events: none;
-}
-.orbit-1 {
-  height: 230px;
-  width: 230px;
-  right: -105px;
-  top: 30px;
-}
-.orbit-2 {
-  height: 180px;
-  width: 180px;
-  right: -79px;
-  top: 56px;
+.balance-card .button:hover {
+  background: #ffffff24;
 }
 .metric-card {
   border: 1px solid var(--border);
@@ -1512,15 +1482,11 @@ td > div + small {
     gap: 14px;
     grid-template-columns: 1.1fr 1fr 1fr;
   }
-  .metric-card,
-  .balance-card {
+  .metric-card {
     padding: 20px 18px;
   }
   .metric-value {
     font-size: 31px;
-  }
-  .balance-number {
-    font-size: 43px;
   }
   .middle-grid {
     gap: 16px;
@@ -1569,10 +1535,6 @@ td > div + small {
   }
   .metric-grid {
     grid-template-columns: 1fr 1fr;
-  }
-  .balance-card {
-    grid-column: 1 / -1;
-    min-height: 177px;
   }
   .metric-card {
     min-height: 167px;
@@ -1692,13 +1654,6 @@ td > div + small {
   .metric-grid {
     gap: 12px;
     margin-bottom: 18px;
-  }
-  .balance-card {
-    min-height: 186px;
-    padding: 21px 23px;
-  }
-  .balance-number {
-    font-size: 49px;
   }
   .metric-card {
     padding: 17px 15px;

@@ -301,6 +301,16 @@ export function Dashboard(p: Props) {
       )}
     </div>
   );
+  const rideButton = (
+    <button
+      className="button primary"
+      onClick={() => open("ride")}
+      disabled={!me}
+    >
+      <Plus size={18} />
+      Fahrt eintragen
+    </button>
+  );
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -350,9 +360,6 @@ export function Dashboard(p: Props) {
             >
               <t.icon size={19} />
               <span>{t.label}</span>
-              {t.id === "members" && (
-                <small>{data.members.filter((m) => m.active).length}</small>
-              )}
             </button>
           ))}
         </nav>
@@ -395,7 +402,7 @@ export function Dashboard(p: Props) {
                   ? "Offline"
                   : p.connected
                     ? "Live verbunden"
-                    : "Abgleich alle 30 Sek."}
+                    : "Regelmässiger Abgleich"}
             </span>
             <button
               className="icon-button"
@@ -437,65 +444,45 @@ export function Dashboard(p: Props) {
               </button>
             </div>
           )}
-          <div className="page-heading">
-            <div>
-              <span className="eyebrow">
-                {tab === "overview"
-                  ? "DEIN MINUTENCLUB IN ZÜRICH"
-                  : data.group.name.toUpperCase()}
-              </span>
-              <h1>
-                {tab === "overview"
-                  ? `Hoi ${me?.display_name ?? "zusammen"} 👋`
-                  : tabs.find((t) => t.id === tab)?.label}
-              </h1>
-              <p>
-                {tab === "overview"
-                  ? "Bereit für den nächsten Weg? Hier steht eure Crew."
-                  : tab === "rides"
+          {tab !== "overview" && (
+            <div className="page-heading">
+              <div>
+                <span className="eyebrow">{data.group.name.toUpperCase()}</span>
+                <h1>{tabs.find((t) => t.id === tab)?.label}</h1>
+                <p>
+                  {tab === "rides"
                     ? "Alle Wege, fair und nachvollziehbar erfasst."
                     : tab === "balance"
                       ? "Eure Minuten und Paketkäufe an einem Ort."
                       : tab === "stats"
                         ? "So viel ist eure Crew unterwegs."
                         : "Gemeinsam fahren. Gemeinsam den Überblick behalten."}
-              </p>
+                </p>
+              </div>
+              {rideButton}
             </div>
-            <button
-              className="button primary"
-              onClick={() => open("ride")}
-              disabled={!me}
-            >
-              <Plus size={18} />
-              Fahrt eintragen
-            </button>
-          </div>
+          )}
           {tab === "overview" && (
             <>
-              <section className="metric-grid">
-                <div className="balance-card">
-                  <div className="card-label">
-                    <span>Dein Guthaben</span>
-                    <span className="round-icon">
-                      <Wallet size={18} />
+              <h1 className="overview-heading">
+                Hoi {me?.display_name ?? "zusammen"} 👋
+              </h1>
+              <section
+                className="balance-card"
+                aria-labelledby="personal-balance"
+              >
+                <div>
+                  <h2 id="personal-balance">Dein Restguthaben</h2>
+                  <p className="balance-number">
+                    <strong>{minutes(own.balance)}</strong>{" "}
+                    <span>
+                      {own.balance < 0 ? "Minuten · im Minus" : "Minuten übrig"}
                     </span>
-                  </div>
-                  <div className="balance-number">
-                    {minutes(own.balance)}
-                    <span>Minuten</span>
-                  </div>
-                  <div className="balance-bottom">
-                    <span className="light-pill">
-                      <i />
-                      {own.balance < 0
-                        ? "Guthaben ausgleichen"
-                        : "Für deinen nächsten Weg"}
-                    </span>
-                    <ArrowUpRight size={23} />
-                  </div>
-                  <div className="card-orbit orbit-1" />
-                  <div className="card-orbit orbit-2" />
+                  </p>
                 </div>
+                {rideButton}
+              </section>
+              <section className="metric-grid overview-metrics">
                 <Metric
                   icon={<Clock3 size={20} />}
                   label="Von dir verbraucht"
