@@ -19,7 +19,7 @@ Neue Mitglieder starten bei 0 Minuten. Mindestens ein aktiver Admin bleibt erhal
 
 ## Eine Fahrt erfassen
 
-1. Mit der eigenen E-Mail-Adresse anmelden.
+1. Mit eigenem Benutzernamen und Passwort anmelden.
 2. **Fahrt eintragen** wählen.
 3. Ganze Fahrminuten und Pausenminuten, Fahrtzeitpunkt und optional eine Notiz eingeben.
 4. Die Vorschau zeigt die Summe; **Speichern** verbucht Fahrt und Minutenabzug gemeinsam.
@@ -41,7 +41,7 @@ Ein Admin storniert fehlerhafte Fahrten mit Grund. Unter **Fahrten → Status �
 | Statistik  | Fahrtenzahl, Verbrauch, Durchschnitt, Personenvergleich sowie geschätzter Verbrauchswert und offene Kostenbewertungen.                                                                                          |
 | Mitglieder | Mitgliederliste, Rollen, Aktivstatus und zeitlich begrenzte Einladungen.                                                                                                                                        |
 
-Bei **Guthaben aufladen** werden Minutenmenge, positiver Gesamtpreis und CHF-Beiträge pro Person erfasst. Die Beiträge müssen genau den Preis ergeben. Paket, Beiträge und proportionale Minutengutschriften entstehen gemeinsam in einer Transaktion. Die Vorschau und die Datenbank verwenden dieselbe Regel für ganze Minuten: zuerst abrunden, dann Restminuten nach grösstem Nachkommaanteil, bei Gleichstand nach fester Mitglieds-ID. Ältere Käufe behalten ihre bestehende Verteilung; Beiträge werden nicht nachträglich erfunden.
+Bei **Guthaben aufladen** wählt ihr eine der drei Schaltflächen. Die App kann Minuten und Preis gleich unter den Teilnehmenden teilen, den Preis anhand der Wunschminuten berechnen oder Minuten nach bezahlten CHF-Beiträgen zuteilen. Die Vorschau zeigt pro Person beide Werte. Kauf, Kostenanteile und Minutengutschriften entstehen gemeinsam in einer Transaktion. [Schritt-für-Schritt-Beispiele](benutzerhandbuch.md)
 
 Kostenlose manuelle Gutschriften bleiben als gesonderte Admin-Aktion verfügbar. Das Kontingent im Diagramm ist die Summe aller Gutschriften; Stornos werden daraus ausgeschlossen, weil sie nur Verbrauch rückgängig machen. Die CHF-Verbrauchswerte beruhen auf einem gespeicherten gewichteten Paketpreis, sind sichtbar geschätzt und stellen keine Schuldenabrechnung dar. Details: [Datenmodell](data-model.md).
 

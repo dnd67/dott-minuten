@@ -8,17 +8,22 @@ Diese Schritte werden einmal für eure Crew erledigt. GitHub enthält den Code; 
 
 1. Auf [supabase.com](https://supabase.com) ein Konto erstellen und ein neues Projekt anlegen.
 2. Eine EU-Region auswählen, möglichst nahe an Zürich. Das Datenbankpasswort sicher speichern.
-3. Im **SQL Editor** die SQL-Dateien in Reihenfolge ausführen: zuerst [202611180001_initial.sql](../supabase/migrations/202611180001_initial.sql), danach [202611190001_names_and_cancellations.sql](../supabase/migrations/202611190001_names_and_cancellations.sql), dann [202611190002_shared_topups.sql](../supabase/migrations/202611190002_shared_topups.sql) und zuletzt [202611190003_locations_and_feedback.sql](../supabase/migrations/202611190003_locations_and_feedback.sql). Die erste erstellt Tabellen und Buchungsfunktionen, die zweite ergänzt Namen und Storno-Akteur, die dritte gemeinsame Aufladungen mit Beiträgen und die vierte optionale Fahrtorte sowie die Feedback-Tabelle `public.feedback`. Jede Datei wird vollständig und jeweils einmal ausgeführt.
-4. Bei Erfolg erscheinen `groups`, `memberships`, `rides`, `minute_entries`, `packages`, `package_contributions`, `feedback` und `invitations` im Table Editor. Das Schema `app_private` enthält interne Hilfsfunktionen und die Idempotenzverwaltung.
-5. Unter **Project Settings → API / API Keys** die Projekt-URL und den **Publishable Key** kopieren. Falls das Projekt noch Legacy Keys verwendet, funktioniert auch der **anon public** Key.
+3. Im **SQL Editor** die Dateien aus der folgenden Tabelle in der angegebenen Reihenfolge ausführen. Bei einer bestehenden Datenbank beim ersten noch ausstehenden Schritt beginnen.
+4. Unter **Project Settings → API / API Keys** die Projekt-URL und den Publishable Key für die Web-App kopieren. Auch der bisherige öffentliche Anon-Key wird unterstützt. Die App greift über persönliche Sitzungen, RLS und die SQL-Funktionen auf die gemeinsamen Daten zu.
 
-Keine Tabellen für anonymen Schreibzugriff öffnen. Die Migration enthält bereits sämtliche erforderlichen Berechtigungen. Keine Service-Role-Keys im Browser oder in `NEXT_PUBLIC_`-Variablen verwenden.
-
-Die Migration ist eine initiale Migration für ein leeres Projekt. Nicht erneut über eine vorhandene Installation ausführen; spätere Schemaänderungen erhalten eine eigene Migration. Alternativ kann sie mit der Supabase CLI als reguläre Migration angewendet werden.
+| Reihenfolge                                                                      | Zweck                                                    |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| [202611180001](../supabase/migrations/202611180001_initial.sql)                  | Grundschema, Mitglieder, Fahrten und Journal             |
+| [202611190001](../supabase/migrations/202611190001_names_and_cancellations.sql)  | Anzeigenamen und Storno-Akteur                           |
+| [202611190002](../supabase/migrations/202611190002_shared_topups.sql)            | Gemeinsame Pakete mit Beitragszeilen                     |
+| [202611190003](../supabase/migrations/202611190003_locations_and_feedback.sql)   | Optionale Fahrtorte und Feedback                         |
+| [202611190004](../supabase/migrations/202611190004_username_auth_and_resets.sql) | Benutzerkonten und Passwortanfragen                      |
+| [202611190005](../supabase/migrations/202611190005_security_and_rate_limits.sql) | Einladungsprüfung, Widerruf und Anfragelimits            |
+| [202611190006](../supabase/migrations/202611190006_package_splits.sql)           | Gleichteilung und Minutenbedarf im vorhandenen Paket-RPC |
 
 ## Bestehende Installation aktualisieren
 
-Wenn die erste Migration schon ausgeführt wurde, die noch fehlenden Dateien [202611190001_names_and_cancellations.sql](../supabase/migrations/202611190001_names_and_cancellations.sql) und [202611190002_shared_topups.sql](../supabase/migrations/202611190002_shared_topups.sql) in dieser Reihenfolge ausführen. Bereits ausgeführte Migrationen nicht nochmals ausführen. Gruppen, Guthaben und Fahrten bleiben erhalten. Die Person hinter früheren Stornos wird, soweit möglich, aus der Gegenbuchung ergänzt. In der lokalen Demo ist keine SQL-Einrichtung nötig.
+Bei einem Projekt auf Stand `202611190005` genügt für die neue Aufteilung die letzte Migration. Spiele sie vor dem neuen Frontend ein. Sie erweitert die vorhandene Funktion, erhält den Aufruf bisheriger Clients und berechnet frühere Paketkäufe nicht neu. Für die lokale Demo entfällt der SQL-Schritt.
 
 Zum Aktualisieren eines lokalen Windows-Checkouts zuerst den Entwicklungsserver mit `Ctrl+C` stoppen, dann:
 
@@ -32,27 +37,20 @@ npm.cmd run dev
 
 In Chrome oder Edge die App öffnen, `F12` drücken und danach mit `Ctrl+Shift+M` die Geräteansicht einschalten. Ein iPhone-Gerät wählen oder eine Breite von 390 Pixeln einstellen. Bei manchen Laptops ist für die Entwicklertools `Fn+F12` nötig. Erneutes `Ctrl+Shift+M` schaltet zur normalen Ansicht zurück. Dies prüft das responsive Layout, simuliert aber nicht sämtliche Eigenheiten von echtem Safari auf einem iPhone.
 
-## 2. E-Mail-Anmeldung konfigurieren
+## 2. Konten und Supabase Edge Functions einrichten
 
-Die App unterstützt einen E-Mail-Code direkt in der App sowie alternativ einen Anmeldelink. Jede Person braucht eine eigene E-Mail-Adresse und tritt danach eurer Gruppe bei.
+Die Web-App meldet Personen mit Benutzername und Passwort an. Intern bildet sie den Benutzernamen auf eine technische Auth-Adresse ab. Der E-Mail-/Passwort-Provider von Supabase muss dazu aktiv sein. Die normalen Konten entstehen über die Funktionen der App. Für eine geschlossene Crew die öffentliche Selbstregistrierung im Auth-Dienst deaktivieren, sodass die Anlage über den vorgesehenen Einladungsablauf erfolgt.
 
-1. In Supabase unter **Authentication → Providers / Sign In** den E-Mail-Provider aktivieren und Neuregistrierungen erlauben. Die Einladung begrenzt den Gruppenzugang, nicht die Registrierung eines Logins.
-2. Für lokale Tests in **Authentication → URL Configuration** als Site URL `http://localhost:3000` und als erlaubte Redirect URL ebenfalls `http://localhost:3000` setzen.
-3. Unter **Authentication → Email Templates → Magic Link** den Anmeldecode `{{ .Token }}` in die E-Mail-Vorlage aufnehmen. Zum Beispiel:
+Stelle die beiden Edge Functions in demselben Supabase-Projekt wie die Migrationen bereit. Mit installierter und angemeldeter Supabase CLI aus dem Repository-Stamm (ersetze `PROJECT_REF` mit der Projektkennung):
 
-   ```html
-   <h2>Dein Minutenclub-Anmeldecode</h2>
-   <p>{{ .Token }}</p>
-   <p>Gib diesen Code in deiner App ein.</p>
-   <p>Alternativ: <a href="{{ .ConfirmationURL }}">Im Browser anmelden</a></p>
-   ```
+```sh
+supabase functions deploy public-account --project-ref PROJECT_REF --no-verify-jwt
+supabase functions deploy admin-account --project-ref PROJECT_REF --no-verify-jwt
+```
 
-   Der Code lässt sich direkt in der installierten Web-App eingeben und vermeidet einen Wechsel in einen anderen Browser. Einladungs- und Anmeldecode sind unterschiedliche Codes.
+`public-account` muss vor einer Anmeldung für Registrierung und Rücksetzanfragen erreichbar sein. `admin-account` prüft selbst das übermittelte Sitzungstoken per `auth.getUser` und die Gruppenberechtigung. Die gehosteten Funktionen verwenden die projektseitig bereitgestellten Variablen `SUPABASE_URL` und `SUPABASE_SERVICE_ROLE_KEY`. Der Service-Role-Key bleibt in der Supabase-Laufzeit. Für die Web-App genügt der öffentliche Projekt-Key.
 
-4. **Für eure Freunde einen eigenen SMTP-Versand konfigurieren.** Supabases eingebauter Test-Mailversand ist eingeschränkt und in der Regel nur für vorab autorisierte Projektteam-Adressen nutzbar. Ein funktionierender Login für den Projektinhaber beweist noch keine Zustellung an August oder Max. Unter **Authentication → Email / SMTP Settings** einen Mailanbieter konfigurieren, dessen Absender- und Empfängerregeln zu euch passen.
-5. SMTP-Zugangsdaten ausschliesslich in Supabase hinterlegen. Der Mailanbieter kann eigene Kosten, Limits oder eine verifizierte Absenderdomain verlangen. Vorher aktuelle Tarife prüfen; für die Webadresse selbst ist keine eigene Domain notwendig.
-
-Bevorzugt den Anmeldecode in derselben App eingeben, in der ihr begonnen habt. Anmeldelinks auf demselben iPhone öffnen, auf dem ihr die App verwenden wollt; eine Anmeldung in Safari muss nicht mit einer separat installierten Web-App geteilt werden. Keine gemeinsame E-Mail-Anmeldung benutzen. Einladungslinks/-codes und Anmeldelinks sind verschiedene Dinge: Der Anmeldelink öffnet den persönlichen Zugang, der Einladungscode verbindet ihn mit der Crew.
+Registriere das Gründerkonto beim Einrichten des leeren Projekts und erstelle den Club, bevor du die Adresse verteilst. Sobald ein Konto in `user_accounts` oder eine Gruppe existiert, benötigt die Registrierung über die App eine gültige Einladung. Teste den zweiten Zugang mit dem Einladungslink und anschliessend die Funktion «Passwort vergessen?» zusammen mit dem Admin.
 
 ## 3. Lokal mit echten Daten testen
 
@@ -77,8 +75,8 @@ Danach `npm run dev` starten und `http://localhost:3000` öffnen. Nach Änderung
 3. Das Framework **Next.js**, das Repository-Hauptverzeichnis als Root und die Standardbefehle verwenden: Installation `npm ci`, Build `npm run build`. Node.js 24 LTS auswählen, soweit angeboten; mindestens 22.
 4. Die Variablen aus `.env.example` mit den echten Werten unter **Environment Variables** für **Production** hinterlegen. Um das vorbereitete **Feedback-Fenster** beim Launch scharfzuschalten, zusätzlich `NEXT_PUBLIC_FEEDBACK_ENABLED=true` setzen (ohne diese Variable speichert das Feedback-Fenster lokal im Vorschau-Modus).
 5. **Deploy** ausführen. Vercel liefert eine HTTPS-Adresse wie `https://DEIN-PROJEKT.vercel.app`.
-6. Diese genaue Adresse in Supabase als **Site URL** und **Redirect URL** eintragen. Die lokale Redirect URL nur behalten, wenn weiterhin lokal getestet wird.
-7. Die Vercel-Adresse öffnen und den Anmeldelink testen. Wenn die Variablen erst nach dem ersten Build gesetzt wurden, ein neues Deployment starten: `NEXT_PUBLIC_`-Werte werden beim Build eingebaut.
+6. Die produktive Adresse als **Site URL** im Supabase-Projekt hinterlegen und Einladungslinks über diese Adresse erzeugen.
+7. Die Vercel-Adresse öffnen und Anmeldung sowie den Beitritt per Einladung testen. Wenn die Variablen erst nach dem ersten Build gesetzt wurden, ein neues Deployment starten: `NEXT_PUBLIC_`-Werte werden beim Build eingebaut.
 
 Vorschau-Deployments sollen ein separates Supabase-Testprojekt verwenden. Keine beliebigen Redirect-Wildcards und keine echten Gruppendaten für öffentliche Demos verwenden. Die Demo bleibt auch bei konfiguriertem Backend separat auswählbar.
 
@@ -90,7 +88,7 @@ Es gibt keine zusätzlichen Vercel-Server-Secrets oder OCR-API-Schlüssel. Die k
 2. Unter **Mitglieder → Einladung erstellen** einen Code erzeugen. Dieser ist sieben Tage gültig und kann während dieser Zeit von mehreren Freunden verwendet werden. Nur privat mit der Crew teilen.
 3. August und Max öffnen dieselbe Webseite, melden sich jeweils an und wählen **Ich habe schon einen Einladungscode**. Ihren eigenen Namen und den Code eingeben.
 4. Weitere Mitglieder treten auf demselben Weg bei. Es gibt keine fest eingebaute Begrenzung auf drei Personen.
-5. Ein Admin wählt **Guthaben → Guthaben aufladen**, trägt Paketminuten, Gesamtpreis und den CHF-Beitrag jedes Mitglieds ein. Die Vorschau zeigt die Minutenanteile. Die Summe der Beiträge muss genau dem Paketpreis entsprechen. Mit **Speichern** werden Kauf, Beiträge und Minutengutschriften gemeinsam gespeichert; keine zusätzliche Gutschrift derselben Minuten vornehmen. **Minuten manuell geben** bleibt als kostenlose interne Gutschrift ohne neuen Paketkauf verfügbar.
+5. Ein Admin öffnet **Guthaben → Guthaben aufladen** und erfasst Paketminuten und Preis. Wählt Gleichteilung, individuellen Minutenbedarf oder bezahlte CHF-Beiträge. Nach **Speichern** sind die Anteile bereits gutgeschrieben. [Beispiele für alle drei Varianten](benutzerhandbuch.md)
 6. Jede Person erfasst nur ihre eigenen Fahrten. Ein Admin kann falsche Fahrten stornieren; die richtige Fahrt wird danach neu eingetragen.
 
 Neue Mitglieder starten bei 0 Minuten. Negatives Guthaben ist sichtbar und verhindert das nachträgliche Erfassen einer tatsächlich gefahrenen Fahrt nicht. Einladungen laufen nach 7 Tagen automatisch ab und lassen sich jederzeit über **Mitglieder → Links sperren** sofort widerrufen.
@@ -102,7 +100,7 @@ Die HTTPS-Webseite in Safari öffnen, **Teilen → Zum Home-Bildschirm** wählen
 ## 7. Vor dem täglichen Einsatz prüfen
 
 - Zwei unterschiedliche Logins auf zwei Geräten verwenden, beide in derselben Gruppe.
-- 600 Minuten für CHF 90.00 aufladen, mit Beiträgen von CHF 30.00 / 45.00 / 15.00: 200 / 300 / 100 Minuten müssen gutgeschrieben werden. Eine Wiederholung desselben Speicheraufrufs darf weder Paket noch Gutschriften verdoppeln.
+- 600 Minuten für CHF 90.00 aufladen, im Modus «Nach CHF-Beitrag» mit Beiträgen von CHF 30.00 / 45.00 / 15.00: 200 / 300 / 100 Minuten müssen gutgeschrieben werden. Eine Wiederholung desselben Speicheraufrufs darf weder Paket noch Gutschriften verdoppeln.
 - Auf der Startseite eigenes Restguthaben, eigenen Verbrauch und Gruppenrest vergleichen. Das Diagramm zeigt pro Mitglied das gesamte Kontingent hinter dem bereits verbrauchten Anteil. Stornos verändern nicht das Kontingent.
 - Mit Oskar eine Fahrt von 14 Minuten und 1 Minute Pause eintragen: genau 15 Minuten Verbrauch.
 - Auf dem zweiten Gerät die aktualisierte Fahrt und den Saldo prüfen. Ein manuelles Neuladen darf nicht nötig sein; bei ausgefallenem Realtime greift spätestens der 30-Sekunden-Abgleich im sichtbaren Fenster.
@@ -110,13 +108,13 @@ Die HTTPS-Webseite in Safari öffnen, **Teilen → Zum Home-Bildschirm** wählen
 - Verbindung unterbrechen: Offline-Hinweis, keine falsche Speicherbestätigung. Danach erneut versuchen; ein bereits verarbeiteter identischer Versuch darf keine zweite Buchung erzeugen.
 - Als normales Mitglied prüfen, dass keine Guthaben-, Rollen- oder Paketänderungen möglich sind.
 - Eine Fahrt als Admin stornieren: ursprüngliche Fahrt bleibt erhalten und genau eine Gegenbuchung entsteht.
-- E-Mail-Zustellung an alle drei tatsächlichen Adressen und Abmelden/erneutes Anmelden testen.
+- Mit zwei persönlichen Benutzernamen abmelden und erneut anmelden. Eine Passwortanfrage im Admin-Dashboard bearbeiten und das neue Passwort testen.
 
 Automatisierte lokale Prüfungen ersetzen diesen Test der echten Auth-, Hosting- und Realtime-Dienste nicht. Ein echter iPhone-Test ist nach der Einrichtung noch auszuführen.
 
 ## Betrieb und Grenzen
 
-Vor dem produktiven Einsatz die aktuellen kostenlosen Tarife, Projektpausierung bei Inaktivität, E-Mail-Limits und Backup-Möglichkeiten prüfen. Kostenloses Hosting ist kein zugesicherter 24/7-Betrieb. Für Supabase ein passendes Datenbankbackup einrichten und eine Wiederherstellung testen. Die App enthält keinen Storage-Bucket, da noch keine Bilder hochgeladen werden.
+Vor dem produktiven Einsatz die aktuellen kostenlosen Tarife, Projektpausierung bei Inaktivität, Funktionslimits und Backup-Möglichkeiten prüfen. Kostenloses Hosting ist kein zugesicherter 24/7-Betrieb. Für Supabase ein passendes Datenbankbackup einrichten und eine Wiederherstellung testen. Die App enthält keinen Storage-Bucket, da noch keine Bilder hochgeladen werden.
 
 Die Kostenübersicht zeigt geschätzte Paketverbrauchswerte und dokumentierte Paketkäufe. Sie wickelt keine Zahlungen ab. Paketverfall, Paket-/Guthabenkorrekturen, automatische Ausgleichszahlungen und Backups werden nicht von der App selbst durchgeführt.
 

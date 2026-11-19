@@ -108,7 +108,7 @@ export type Action =
   | "dismiss_password_reset";
 export type RpcArgs = Record<
   string,
-  string | number | boolean | null | ContributionInput[]
+  string | number | boolean | null | TopupPlan
 >;
 export const minutes = (seconds: number) =>
   new Intl.NumberFormat("de-CH", { maximumFractionDigits: 1 }).format(
@@ -197,11 +197,45 @@ export function rideDraft(drive: string, pause: string) {
 }
 
 export type ContributionInput = { member_id: string; amount_rappen: number };
-/** Ganze Minuten nach grösstem Rest. BigInt verhindert Rundungsfehler bei hohen Beträgen. */
-export function allocateMinutes(
+export type SplitMode = "equal" | "minutes" | "amount";
+export type SplitInput = { member_id: string; weight: number };
+export type TopupPlan =
+  | ContributionInput[]
+  | {
+      mode: "equal" | "minutes";
+      shares: SplitInput[];
+    };
+
+// Ganze Einheiten nach grösstem Rest, bei Gleichstand nach Mitglieds-ID.
+function apportion(total: number, inputs: SplitInput[], divisor: bigint) {
+  const rows = inputs.map(({ member_id, weight }, index) => {
+    const numerator = BigInt(total) * BigInt(weight);
+    return {
+      member_id,
+      index,
+      whole: Number(numerator / divisor),
+      rest: numerator % divisor,
+    };
+  });
+  const amounts = rows.map((row) => row.whole);
+  const missing = total - amounts.reduce((sum, n) => sum + n, 0);
+  rows.sort((a, b) =>
+    a.rest === b.rest
+      ? a.member_id < b.member_id
+        ? -1
+        : 1
+      : a.rest > b.rest
+        ? -1
+        : 1,
+  );
+  for (const row of rows.slice(0, missing)) amounts[row.index]++;
+  return amounts;
+}
+
+export function splitPackage(
   totalMinutes: number,
   priceRappen: number,
-  inputs: ContributionInput[],
+  plan: TopupPlan,
 ) {
   if (
     !Number.isSafeInteger(totalMinutes) ||
@@ -214,50 +248,43 @@ export function allocateMinutes(
     throw new Error(
       "Bitte gültige Paketminuten und einen positiven Preis eingeben.",
     );
-  if (
-    !inputs.length ||
-    new Set(inputs.map((c) => c.member_id)).size !== inputs.length
-  )
-    throw new Error("Jede Person darf nur einmal beitragen.");
+  const mode = Array.isArray(plan) ? "amount" : plan.mode;
+  const inputs = Array.isArray(plan)
+    ? plan.map((c) => ({ member_id: c.member_id, weight: c.amount_rappen }))
+    : plan.shares;
+  if (!inputs.length) throw new Error("Wähle mindestens eine Person aus.");
+  if (new Set(inputs.map((c) => c.member_id)).size !== inputs.length)
+    throw new Error("Jede Person darf nur einmal teilnehmen.");
   if (
     inputs.some(
       (c) =>
-        !Number.isSafeInteger(c.amount_rappen) ||
-        c.amount_rappen < 0 ||
-        c.amount_rappen > priceRappen,
+        !Number.isSafeInteger(c.weight) ||
+        c.weight < 0 ||
+        (mode === "equal" && c.weight !== 1),
     )
   )
-    throw new Error("Bitte gültige Beiträge eingeben.");
-  if (
-    inputs.reduce((n, c) => n + BigInt(c.amount_rappen), 0n) !==
-    BigInt(priceRappen)
-  )
+    throw new Error("Die Anteile müssen gültige ganze Einheiten sein.");
+  const divisor = inputs.reduce((n, c) => n + BigInt(c.weight), 0n);
+  if (mode === "minutes" && divisor !== BigInt(totalMinutes))
+    throw new Error(
+      `Minuten verteilt: ${divisor} von ${totalMinutes}. Bitte den Bedarf anpassen.`,
+    );
+  if (mode === "amount" && divisor !== BigInt(priceRappen))
     throw new Error(
       "Die Summe aller Beiträge muss genau dem Paketpreis entsprechen.",
     );
-  const price = BigInt(priceRappen),
-    total = BigInt(totalMinutes);
-  const shares = inputs.map((c) => ({
-    ...c,
-    minutes: Number((total * BigInt(c.amount_rappen)) / price),
-    remainder: (total * BigInt(c.amount_rappen)) % price,
-  }));
-  const missing = totalMinutes - shares.reduce((n, c) => n + c.minutes, 0);
-  const ranked = [...shares].sort((a, b) =>
-    a.remainder === b.remainder
-      ? a.member_id < b.member_id
-        ? -1
-        : a.member_id > b.member_id
-          ? 1
-          : 0
-      : a.remainder > b.remainder
-        ? -1
-        : 1,
-  );
-  for (let i = 0; i < missing; i++) ranked[i].minutes++;
-  return shares.map(({ member_id, amount_rappen, minutes }) => ({
+  const minutes = apportion(totalMinutes, inputs, divisor);
+  const amounts = apportion(priceRappen, inputs, divisor);
+  return inputs.map(({ member_id }, i) => ({
     member_id,
-    amount_rappen,
-    minutes,
+    minutes: minutes[i],
+    amount_rappen: amounts[i],
   }));
 }
+
+// Bestehende Aufrufer teilen die Minuten nach bereits bezahlten Beiträgen auf.
+export const allocateMinutes = (
+  totalMinutes: number,
+  priceRappen: number,
+  inputs: ContributionInput[],
+) => splitPackage(totalMinutes, priceRappen, inputs);

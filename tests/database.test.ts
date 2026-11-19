@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { allocateMinutes } from "../lib/domain";
+import { allocateMinutes, splitPackage, type SplitMode } from "../lib/domain";
 import { PGlite } from "@electric-sql/pglite";
 
 test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => {
@@ -583,6 +583,66 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
         [gid],
       );
       assert.equal(snap.value.contributions.length, 9);
+      for (const mode of [
+        "equal",
+        "minutes",
+      ] as const satisfies readonly SplitMode[]) {
+        const splitId = randomUUID();
+        const plan = {
+          mode,
+          shares: [
+            { member_id: friendMember, weight: mode === "equal" ? 1 : 24 },
+            { member_id: ownerMember, weight: mode === "equal" ? 1 : 77 },
+          ],
+        };
+        const args = [
+          gid,
+          splitId,
+          ownerMember,
+          101,
+          1,
+          date,
+          JSON.stringify(plan),
+          mode,
+        ];
+        await assert.rejects(() => as(friend, sql, args), /Keine Berechtigung/);
+        for (const shares of [
+          [],
+          [plan.shares[0], plan.shares[0]],
+          [{ member_id: ownerMember, weight: 2 }],
+          [{ member_id: randomUUID(), weight: mode === "equal" ? 1 : 101 }],
+        ]) {
+          const invalidArgs = [...args];
+          invalidArgs[6] = JSON.stringify({ mode, shares });
+          await assert.rejects(() => as(owner, sql, invalidArgs));
+        }
+        await as(owner, sql, args);
+        await as(owner, sql, args);
+        const stored = await as<{
+          member_id: string;
+          minutes: number;
+          amount_rappen: number;
+        }>(
+          owner,
+          "select member_id,(allocated_seconds/60)::int as minutes, amount_rappen::int from public.package_contributions where package_id=$1 order by member_id",
+          [splitId],
+        );
+        assert.deepEqual(
+          stored,
+          splitPackage(101, 1, plan).sort((a, b) =>
+            a.member_id.localeCompare(b.member_id),
+          ),
+        );
+        const credits = await as<{ seconds: number }>(
+          owner,
+          "select seconds::int from public.minute_entries where package_id=$1",
+          [splitId],
+        );
+        assert.equal(
+          credits.reduce((n, c) => n + c.seconds, 0),
+          6060,
+        );
+      }
       // Keine Berechtigung für eine fremde Gruppe: weder Beiträge noch Snapshot.
       const unknown = randomUUID();
       await db.exec("reset role");

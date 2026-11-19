@@ -11,7 +11,7 @@
 - Storno-Verlauf mit Zeitpunkt, Grund, ausführender Person und zurückgebuchten Minuten.
 - Admin-Gutschriften, Paketkäufe, Mitgliederrollen und Fahrtstornos.
 - Journalbasierte Salden, Verbrauchsstatistik und gekennzeichnete Kostenschätzungen.
-- Gemeinsame Aufladungen mit Paketpreis, Einzelbeiträgen und automatisch anteilig gutgeschriebenen Minuten.
+- Gemeinsame Aufladungen mit Gleichteilung, Wunschminuten oder bezahlten CHF-Beiträgen.
 - Startseite mit eigenem Rest/Verbrauch, Gruppenrest, Restguthaben der anderen und überlagerten Kontingent-/Verbrauchsbalken.
 - Gemeinsame Dashboard-Abfrage, Realtime-Hinweise, Abgleich nach Rückkehr und periodisches Nachladen.
 - Getrennte lokale Demo mit Oskar, August und Max.
@@ -21,7 +21,7 @@
 ## Für euren echten Betrieb noch nötig
 
 1. Supabase- und Vercel-Konten erstellen und gemäss [Anleitung](setup.md) verbinden.
-2. Migration einmal ausführen, E-Mail-Versand und erlaubte Login-Weiterleitungen konfigurieren.
+2. Ausstehende Migrationen anwenden und die beiden Edge Functions zur Kontoverwaltung bereitstellen.
 3. Oskars Gruppe erstellen, August und Max mit eigenen Logins einladen.
 4. Echte Paketkäufe und Guthabenverteilungen erfassen.
 5. Den dokumentierten Abnahmelauf auf zwei Geräten durchführen, einschliesslich Realtime, Hintergrundwechsel und Netzunterbruch.

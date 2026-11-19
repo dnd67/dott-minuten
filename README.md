@@ -4,6 +4,14 @@ Eine iPhone-taugliche Web-App für eure gemeinsamen Scooter-Minutenpakete. Jede 
 
 **Stand:** Die erste App-Version ist implementiert und für Vercel + Supabase vorbereitet. Eine produktive Installation erfordert noch eure Konten und die Einrichtung gemäss [Anleitung](docs/setup.md). Die App ist ein unabhängiges Projekt ohne offizielle Verbindung zu Dott.
 
+## Wegweiser
+
+| Ich möchte …                                                                  | Passende Anleitung                                          |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Die App auf dem iPhone nutzen, Fahrten erfassen und Pakete aufteilen          | [Benutzerhandbuch mit Beispielen](docs/benutzerhandbuch.md) |
+| Den gemeinsamen Betrieb auf Supabase und Vercel einrichten oder aktualisieren | [Einrichtung und Abnahme](docs/setup.md)                    |
+| Als Coding-Agent oder Entwickler eine Änderung umsetzen und testen            | [Einstieg, Codepfade und technische Verträge](AGENTS.md)    |
+
 ## Was funktioniert?
 
 - **Direkte Anmeldung per Benutzername & Passwort** (ohne E-Mail-Zwang oder MFA) plus eigenes **Passwort- & Zurücksetzungs-Dashboard** für Gruppen-Admins (offene «Passwort vergessen»-Anfragen bearbeiten, Passwörter neu vergeben oder Mitglieder direkt mit Startpasswort anlegen).
@@ -12,12 +20,12 @@ Eine iPhone-taugliche Web-App für eure gemeinsamen Scooter-Minutenpakete. Jede 
 - Eigene Fahrten manuell erfassen oder live per **Dott entsperren** starten: **Verbrauch = Fahrzeit + Pausierzeit**.
 - **Optionale Standortfreigabe nur bei aktiver Verwendung:** Beim Entsperren oder Speichern lässt sich der aktuelle Standort einmalig per Knopfdruck übernehmen (kein `watchPosition`, kein Hintergrund-Tracking, lokale Zuordnung auf dem Gerät).
 - **Uhrzeit- und Zielstatistik:** Auswertung über 24 Stunden, Tageszeiten, beliebteste Ziele und Routenprofile (_wer wie oft um welche Uhrzeit wohin gefahren ist_).
-- **Interaktives Onboarding & Einladungslinks:** 3-stufige Einführungstour mit Pass-Simulator sowie teilbare Einladungslinks (`?invite=...`), die nach dem E-Mail-Login automatisch übernommen werden.
+- **Interaktives Onboarding & Einladungslinks:** 3-stufige Einführungstour mit Pass-Simulator sowie teilbare Einladungslinks (`?invite=...`), die nach der Anmeldung automatisch übernommen werden.
 - **Dark & Light Mode:** Folgt automatisch der Systemeinstellung (für gute Lesbarkeit draussen in der Sonne sowie abends) oder lässt sich direkt zwischen _System_, _Hell_ und _Dunkel_ umschalten.
 - **Vorbereitetes Feedback-Fenster:** Direkt in der App testbar und beim Launch auf Vercel & Supabase über `NEXT_PUBLIC_FEEDBACK_ENABLED=true` sofort live in `public.feedback` aktivierbar.
 - Frei wählbare positive Minutengutschriften durch Admins, keine festen Aufladepakete.
 - Persönliche Salden, gemeinsamer Paketbestand und nachvollziehbares Buchungsjournal.
-- Guthaben gemeinsam aufladen: Paketminuten, CHF-Preis und Beiträge pro Person erfassen. Die App verteilt die Minuten automatisch nach bezahltem Anteil.
+- Guthaben gemeinsam aufladen: Teilnehmende auswählen und Preis und Minuten gleich teilen, Wunschminuten vorgeben oder bezahlte CHF-Beiträge eintragen. Vor dem Speichern sind beide Anteile pro Person sichtbar.
 - Verbrauchsstatistik nach Person und Zeitraum, Fahr- und Pausierzeit getrennt. Auf der Startseite: eigenes Restguthaben, eigener Verbrauch, Gruppenrest und Restguthaben aller Mitglieder.
 - Balkendiagramm pro Person: transparentes Gesamtkontingent im Hintergrund, bisheriger Verbrauch davor.
 - Fahrten durch Admins stornieren: Gegenbuchung statt Löschen. Eigener Storno-Verlauf mit Grund, Zeitpunkt, ausführender Person und zurückgegebenen Minuten.
@@ -35,13 +43,12 @@ Voraussetzung: Node.js 22 oder neuer, empfohlen Node.js 24 LTS.
 
 ```sh
 npm ci
-cp .env.example .env.local
 npm run dev
 ```
 
 Ohne Supabase-Konfiguration zeigt die Startseite einen Einrichtungslink und den Button **Demo ausprobieren**. Die Demo lässt sich auch unter `http://localhost:3000/?demo=1` öffnen. Es gibt keine stillschweigende Umschaltung von echten Daten auf Beispieldaten.
 
-Für den gemeinsamen Betrieb die SQL-Migrationen in Supabase der Reihe nach ausführen und die zwei öffentlichen Projektwerte in `.env.local` beziehungsweise Vercel hinterlegen. Vollständige Schritte einschliesslich E-Mail-Zustellung: **[Supabase und Vercel einrichten](docs/setup.md)**.
+Für den gemeinsamen Betrieb die SQL-Migrationen in Supabase der Reihe nach ausführen und die zwei öffentlichen Projektwerte in `.env.local` beziehungsweise Vercel hinterlegen. Vollständige Schritte einschliesslich Konto-Funktionen: **[Supabase und Vercel einrichten](docs/setup.md)**.
 
 ## Prüfen
 
@@ -58,7 +65,7 @@ npm run test:e2e
 
 Für die Browserprüfungen einen eventuell laufenden `npm run dev`-Prozess zuerst beenden.
 
-Die Datenbanktests führen dieselben SQL-Migrationen in PostgreSQL via PGlite aus. Sie prüfen unter anderem RLS, Rechte, atomare Buchungen, Wiederholungen, Stornos und deaktivierte Mitglieder. Der Live-Betrieb mit Supabase Realtime, E-Mail und mehreren iPhones muss nach der Einrichtung separat abgenommen werden.
+Die Datenbanktests führen dieselben SQL-Migrationen in PostgreSQL via PGlite aus. Sie prüfen unter anderem RLS, Rechte, atomare Buchungen, Wiederholungen, Stornos und deaktivierte Mitglieder. Der Live-Betrieb mit Supabase Realtime, Benutzerkonten und mehreren iPhones muss nach der Einrichtung separat abgenommen werden.
 
 ## Aufbau
 

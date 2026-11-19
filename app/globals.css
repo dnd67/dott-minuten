@@ -1263,35 +1263,52 @@ body:has(.entry-dialog[open]) {
   color: var(--secondary);
   font-size: 0.8rem;
 }
-.contribution-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(5rem, 1fr) minmax(3.5rem, auto);
-  gap: 0.5rem;
-  align-items: center;
-  margin: 0.7rem 0;
+.split-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.85rem;
 }
-.contribution-row label {
+.split-modes button {
+  min-height: 44px;
+  padding: 0.4rem 0.65rem;
+  border-radius: 0.65rem;
+  font-size: 0.85rem;
+  background: var(--inset);
+}
+.split-modes button[aria-pressed="true"] {
+  background: var(--tint);
+  color: var(--on-tint);
+  font-weight: 650;
+}
+.split-person {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(4rem, 6rem);
+  gap: 0.25rem 0.65rem;
+  align-items: center;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.split-person label {
   margin: 0;
   overflow-wrap: anywhere;
 }
-.contribution-row > div {
-  position: relative;
+.split-person-select {
+  flex-direction: row;
+  align-items: center;
+  min-height: 44px;
 }
-.contribution-row > div span {
-  position: absolute;
-  left: 0.5rem;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 0.74rem;
+.split-person-select input {
+  width: 1.15rem;
+  height: 1.15rem;
+  min-height: 0;
+  flex: none;
+  accent-color: var(--tint);
+}
+.split-person small {
+  grid-column: 1/-1;
   color: var(--secondary);
-}
-.contribution-row input {
-  padding-left: 2.3rem;
-}
-.contribution-row strong {
-  text-align: right;
-  color: var(--tint);
-  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
 }
 .allocation-status {
   margin-bottom: 0.5rem;

@@ -40,7 +40,9 @@ import {
 } from "lucide-react";
 import {
   chf,
-  allocateMinutes,
+  splitPackage,
+  type SplitMode,
+  type TopupPlan,
   dateLabel,
   localDateTime,
   minutes,
@@ -1008,7 +1010,7 @@ export function Dashboard(p: Props) {
               <section className="panel">
                 <PanelHeading
                   title="Minutenpakete"
-                  description="Paketpreis und Beiträge erfassen. Die Minuten werden entsprechend den bezahlten Anteilen gutgeschrieben."
+                  description="Gemeinsame Käufe mit Kosten und Minutenanteilen pro Person."
                   aside={
                     admin ? (
                       <button
@@ -1081,10 +1083,9 @@ export function Dashboard(p: Props) {
                   )}
                 </div>
                 <p className="panel-footnote">
-                  Beiträge dokumentieren eure Zahlungen; die App führt keine
-                  Überweisungen aus. Minuten werden nach bezahltem Anteil
-                  verteilt. Paketkorrekturen, Verfall und Ausgleichszahlungen
-                  sind für später vorgesehen.
+                  Die Beträge zeigen eure Kostenanteile. Zahlungen erledigt ihr
+                  selbst. Paketkorrekturen, Verfall und Ausgleichszahlungen sind
+                  für später vorgesehen.
                 </p>
               </section>
               <section className="panel">
@@ -1853,22 +1854,39 @@ function EntryDialog({
     [data.rides],
   );
 
-  let allocation: ReturnType<typeof allocateMinutes> = [],
+  const [splitMode, setSplitMode] = useState<SplitMode>("equal");
+  const [excluded, setExcluded] = useState<string[]>([]);
+  const [needs, setNeeds] = useState<Record<string, string>>({});
+  let plan: TopupPlan = [];
+  let allocation: ReturnType<typeof splitPackage> = [],
     allocationMessage = "",
-    contributedRappen = 0,
-    expectedRappen: number | null = null;
+    contributedRappen = 0;
   if (kind === "package") {
     try {
-      const inputs = activeMembers.map((m) => ({
-        member_id: m.id,
-        amount_rappen: moneyRappen(contributions[m.id] || "0"),
-      }));
-      contributedRappen = inputs.reduce((n, c) => n + c.amount_rappen, 0);
-      expectedRappen = moneyRappen(packagePrice);
-      allocation = allocateMinutes(
+      if (splitMode === "amount") {
+        plan = activeMembers.map((m) => ({
+          member_id: m.id,
+          amount_rappen: moneyRappen(contributions[m.id] || "0"),
+        }));
+        contributedRappen = plan.reduce((sum, c) => sum + c.amount_rappen, 0);
+      } else {
+        plan = {
+          mode: splitMode,
+          shares: activeMembers
+            .filter((m) => !excluded.includes(m.id))
+            .map((m) => ({
+              member_id: m.id,
+              weight:
+                splitMode === "equal"
+                  ? 1
+                  : wholeMinutes(needs[m.id] || "0", true),
+            })),
+        };
+      }
+      allocation = splitPackage(
         wholeMinutes(packageMinutes),
-        expectedRappen,
-        inputs,
+        moneyRappen(packagePrice),
+        plan,
       );
     } catch (e) {
       allocationMessage =
@@ -1922,7 +1940,7 @@ function EntryDialog({
         : kind === "credit"
           ? "Kostenlose interne Gutschrift ohne Paketkauf. Für bezahlte Minuten nutze Guthaben aufladen."
           : kind === "package"
-            ? "Erfasse Paketminuten, Preis und die Beiträge eurer Crew. Eure Minutenanteile werden direkt gutgeschrieben."
+            ? "Trage Paketminuten und Preis ein. Wähle anschliessend, wie ihr beides aufteilt."
             : kind === "rename"
               ? "Der neue Name gilt in der ganzen Gruppe. Fahrten und Guthaben bleiben derselben Person zugeordnet."
               : "Die Minuten werden mit einer Gegenbuchung zurückgegeben. Die ursprüngliche Fahrt bleibt sichtbar.";
@@ -1993,10 +2011,7 @@ function EntryDialog({
           p_payer_id: str("member"),
           p_minutes: wholeMinutes(str("minutes")),
           p_price_rappen: moneyRappen(packagePrice),
-          p_contributions: allocation.map((c) => ({
-            member_id: c.member_id,
-            amount_rappen: c.amount_rappen,
-          })),
+          p_contributions: plan,
           p_purchased_at: new Date(str("when")).toISOString(),
           p_note: str("note"),
         });
@@ -2335,49 +2350,104 @@ function EntryDialog({
 
           {kind === "package" && (
             <fieldset className="contribution-fields">
-              <legend>Wer hat wie viel beigetragen?</legend>
-              <p>Trage die Beträge in CHF ein. Kein Beitrag = 0.00.</p>
-              {activeMembers.map((m) => (
-                <div className="contribution-row" key={m.id}>
-                  <label htmlFor={`contribution-${m.id}`}>
-                    {m.display_name}
-                  </label>
-                  <div>
-                    <span>CHF</span>
-                    <input
-                      id={`contribution-${m.id}`}
-                      inputMode="decimal"
-                      placeholder="0.00"
-                      value={contributions[m.id] ?? ""}
-                      onChange={(e) =>
-                        setContributions((old) => ({
-                          ...old,
-                          [m.id]: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                  <strong>
-                    {allocation.length
-                      ? `${allocation.find((c) => c.member_id === m.id)?.minutes ?? 0} Min.`
-                      : "–"}
-                  </strong>
-                </div>
-              ))}
-              <div className="sum-line">
-                <span>Beiträge gesamt</span>
-                <strong>
-                  {chf(contributedRappen)}
-                  {expectedRappen !== null ? ` / ${chf(expectedRappen)}` : ""}
-                </strong>
+              <legend>Paket aufteilen</legend>
+              <div className="split-modes">
+                {(
+                  [
+                    ["equal", "Gleich aufteilen"],
+                    ["minutes", "Nach Minutenbedarf"],
+                    ["amount", "Nach CHF-Beitrag"],
+                  ] as const
+                ).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={splitMode === mode}
+                    onClick={() => {
+                      setSplitMode(mode);
+                      setError("");
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
+              <p>
+                {splitMode === "equal"
+                  ? "Wähle, wer mitmacht. Preis und Minuten werden gleichmässig geteilt."
+                  : splitMode === "minutes"
+                    ? "Wähle die Personen und trage ihren Bedarf in ganzen Minuten ein. Der Preis folgt den Minutenanteilen."
+                    : "Trage die bezahlten CHF-Beträge ein. Ein leeres Feld zählt als null."}
+              </p>
+              {activeMembers.map((m) => {
+                const share = allocation.find((c) => c.member_id === m.id);
+                const selected = !excluded.includes(m.id);
+                const isAmount = splitMode === "amount";
+                const inputId = `share-${m.id}`;
+                return (
+                  <div className="split-person" key={m.id}>
+                    {isAmount ? (
+                      <label htmlFor={inputId}>{m.display_name}</label>
+                    ) : (
+                      <label className="split-person-select">
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setExcluded((old) =>
+                              checked
+                                ? old.filter((id) => id !== m.id)
+                                : [...old, m.id],
+                            );
+                          }}
+                        />
+                        {m.display_name}
+                      </label>
+                    )}
+                    {(isAmount || (splitMode === "minutes" && selected)) && (
+                      <input
+                        id={inputId}
+                        aria-label={
+                          isAmount
+                            ? m.display_name
+                            : `Minutenbedarf von ${m.display_name}`
+                        }
+                        inputMode={isAmount ? "decimal" : "numeric"}
+                        placeholder={isAmount ? "0.00" : "0"}
+                        value={(isAmount ? contributions : needs)[m.id] ?? ""}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          (isAmount ? setContributions : setNeeds)((old) => ({
+                            ...old,
+                            [m.id]: value,
+                          }));
+                        }}
+                      />
+                    )}
+                    {share && (
+                      <small>
+                        {share.minutes} Min. · {chf(share.amount_rappen)}
+                      </small>
+                    )}
+                  </div>
+                );
+              })}
+              {splitMode === "amount" && (
+                <div className="sum-line">
+                  <span>Beiträge gesamt</span>
+                  <strong>{chf(contributedRappen)}</strong>
+                </div>
+              )}
               <div className="allocation-status" role="status">
-                {allocationMessage ||
-                  `${packageMinutes} Minuten werden gemeinsam aufgeteilt.`}
+                {!packageMinutes || !packagePrice
+                  ? "Gib Paketminuten und Preis für die Vorschau ein."
+                  : allocationMessage ||
+                    `${packageMinutes} Minuten · ${chf(allocation.reduce((sum, c) => sum + c.amount_rappen, 0))} aufgeteilt`}
               </div>
               <small>
-                Ganze Minuten, Restminuten nach grösstem Nachkommaanteil. Bei
-                Gleichstand entscheidet die feste Mitglieds-ID.
+                Rundungsreste gehen an die grössten Nachkommaanteile. Bei
+                Gleichstand entscheidet die Mitglieds-ID.
               </small>
             </fieldset>
           )}

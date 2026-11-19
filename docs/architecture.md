@@ -4,14 +4,14 @@
 
 ## Implementierte Version
 
-Die responsive Next.js-App läuft auf Vercel. Jede Person nutzt einen eigenen Supabase-Auth-Zugang. Alle Geräte einer Gruppe lesen und schreiben denselben PostgreSQL-Datenbestand. Der Browser verwendet ausschliesslich den öffentlichen Supabase-Key und die Sitzung der angemeldeten Person; ein Service-Role-Key wird nicht benötigt.
+Im eingerichteten Betrieb liefert Vercel die responsive Next.js-App aus. Jede Person nutzt einen eigenen Supabase-Auth-Zugang. Alle Geräte einer Gruppe lesen und schreiben denselben PostgreSQL-Datenbestand. Der Browser verwendet ausschliesslich den öffentlichen Supabase-Key und die Sitzung der angemeldeten Person; die Supabase Edge Functions verwenden für die Kontoverwaltung einen serverseitigen Service-Role-Key.
 
 ```mermaid
 flowchart TD
     A[iPhone Oskar] --> W[Next.js-Web-App auf Vercel]
     B[iPhone August] --> W
     C[iPhone Max] --> W
-    W --> Auth[Supabase Auth · E-Mail-Code / Link]
+    W --> Auth[Supabase Auth · Benutzername und Passwort]
     W --> RPC[Autorisierte PostgreSQL-Funktionen]
     RPC --> DB[(Supabase PostgreSQL · RLS)]
     DB --> RT[Supabase Realtime]
@@ -39,7 +39,7 @@ Im Offline-Zustand werden keine Buchungen angenommen. iOS kann geschlossene oder
 
 Alle kritischen Mutationen sind Datenbankfunktionen mit eigener Berechtigungsprüfung. Ein kurzes Gruppenschloss serialisiert gleichzeitige Buchungen. Die gemeinsame Aufladung speichert Paket, Beitragsliste und sämtliche Minutengutschriften atomar. Fahrt und Verbrauchseintrag werden gemeinsam oder gar nicht gespeichert. Salden werden aus einem Journal abgeleitet; es gibt keinen überschreibbaren Kontostand.
 
-Jeder Schreibversuch erhält einen UUID-Idempotenzschlüssel. Das interne Schema `app_private.commands` speichert Aktion und Nutzdaten. Ein identischer Retry hat keine zweite Wirkung; derselbe Schlüssel mit anderen Daten wird abgewiesen. Im Browser bleibt der Schlüssel innerhalb eines geöffneten Eingabevorgangs auch nach einem Fehler erhalten. War der erste Versuch bereits verbucht, werden geänderte Nutzdaten zurückgewiesen statt als zweite Aufladung gespeichert. Eine bewusst neu geöffnete Eingabe erhält einen neuen Schlüssel. Nach einem vollständigen Neuladen ist dieser Schlüssel nicht dauerhaft gespeichert: Bei unklarem Ausgang zuerst die Fahrtenliste prüfen. Die App erkennt in dieser Version keine inhaltlich doppelt manuell eingegebenen Fahrten.
+Jeder Buchungsversuch erhält einen UUID-Idempotenzschlüssel. Das interne Schema `app_private.commands` speichert Aktion und Nutzdaten. Ein identischer Retry hat keine zweite Wirkung; derselbe Schlüssel mit anderen Daten wird abgewiesen. Im Browser bleibt der Schlüssel innerhalb eines geöffneten Eingabevorgangs auch nach einem Fehler erhalten. War der erste Versuch bereits verbucht, werden geänderte Nutzdaten zurückgewiesen statt als zweite Aufladung gespeichert. Eine bewusst neu geöffnete Eingabe erhält einen neuen Schlüssel. Nach einem vollständigen Neuladen ist dieser Schlüssel nicht dauerhaft gespeichert: Bei unklarem Ausgang zuerst die Fahrtenliste prüfen. Die App erkennt in dieser Version keine inhaltlich doppelt manuell eingegebenen Fahrten.
 
 Eine Stornierung durch einen Admin markiert die ursprüngliche Fahrt und erzeugt eine Gegenbuchung. Rollenänderungen dürfen den letzten aktiven Admin nicht entfernen. Deaktivierte Mitglieder verlieren Datenzugriff und Schreibrechte; ihre Historie bleibt erhalten.
 
@@ -57,6 +57,6 @@ Die spätere Verarbeitung muss serverseitig erfolgen. Das Modell liest ausschlie
 
 ## Betrieb
 
-[Die Einrichtungsanleitung](setup.md) beschreibt Supabase-Projekt, SQL-Migration, E-Mail-Versand, Redirect-URLs und Vercel-Variablen. Es gibt keine bereits provisionierten Cloud-Ressourcen in diesem Repository. Die lokale Testumgebung verwendet eine echte PostgreSQL-Engine via PGlite, jedoch keine echte Supabase-Auth- oder Realtime-Infrastruktur.
+[Die Einrichtungsanleitung](setup.md) beschreibt Supabase-Projekt, SQL-Migration, Konto-Funktionen, Anmeldung und Vercel-Variablen. Es gibt keine bereits provisionierten Cloud-Ressourcen in diesem Repository. Die lokale Testumgebung verwendet eine echte PostgreSQL-Engine via PGlite, jedoch keine echte Supabase-Auth- oder Realtime-Infrastruktur.
 
 Das Dashboard lädt zunächst alle Gruppendatensätze in einem JSON-Ergebnis. Es gibt deshalb keine stille REST-Standardbegrenzung auf 1'000 Zeilen. Für grosse Gruppen oder umfangreiche Historien sind später serverseitige Aggregationen und Seitennavigation vorzusehen.

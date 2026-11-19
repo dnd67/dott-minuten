@@ -1,5 +1,5 @@
 import {
-  allocateMinutes,
+  splitPackage,
   type Snapshot,
   type RpcArgs,
   type Action,
@@ -351,9 +351,9 @@ export function demoAction(
     });
   else if (action === "record_topup") {
     if (data.packages.some((p) => p.id === id)) return data;
-    if (!Array.isArray(args.p_contributions))
+    if (!args.p_contributions || typeof args.p_contributions !== "object")
       throw new Error("Bitte Beiträge angeben.");
-    const shares = allocateMinutes(
+    const shares = splitPackage(
       Number(args.p_minutes),
       Number(args.p_price_rappen),
       args.p_contributions,

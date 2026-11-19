@@ -30,6 +30,7 @@ test("Demo: Fahrt, Guthaben, Paket, Storno, Filter und Einladung", async ({
   await expect(page.getByText("Testgutschrift")).toBeVisible();
   await page.getByRole("button", { name: "Guthaben aufladen" }).click();
   await page.getByLabel("Minuten", { exact: true }).fill("300");
+  await page.getByRole("button", { name: "Nach CHF-Beitrag" }).click();
   await page.getByLabel("Paketpreis (CHF)").fill("45.00");
   await page.getByLabel("Oskar", { exact: true }).fill("15");
   await page.getByLabel("August", { exact: true }).fill("30");
@@ -118,12 +119,13 @@ test("iPhone-Abmessungen: alle Seiten bedienbar, Dialog und Offline-Hinweis", as
     .click();
   await page.getByRole("button", { name: "Guthaben aufladen" }).click();
   await page.getByLabel("Minuten", { exact: true }).fill("100");
+  await page.getByRole("button", { name: "Nach CHF-Beitrag" }).click();
   await page.getByLabel("Paketpreis (CHF)").fill("10");
   await page.getByLabel("Oskar", { exact: true }).fill("3");
   await page.getByLabel("August", { exact: true }).fill("3");
   await page.getByLabel("Max", { exact: true }).fill("4");
   await expect(
-    page.locator(".contribution-row").filter({ hasText: "Max" }),
+    page.locator(".split-person").filter({ hasText: "Max" }),
   ).toContainText("40 Min.");
   await page.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -162,6 +164,7 @@ test("Aufladen nach Beiträgen aktualisiert Home, Restguthaben und Kontingentdia
     .click();
   await page.getByRole("button", { name: "Guthaben aufladen" }).click();
   await page.getByLabel("Minuten", { exact: true }).fill("600");
+  await page.getByRole("button", { name: "Nach CHF-Beitrag" }).click();
   await page.getByLabel("Paketpreis (CHF)").fill("90");
   await page.getByLabel("Oskar", { exact: true }).fill("30");
   await page.getByLabel("August", { exact: true }).fill("45");
@@ -170,13 +173,13 @@ test("Aufladen nach Beiträgen aktualisiert Home, Restguthaben und Kontingentdia
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByLabel("Max", { exact: true }).fill("15");
   await expect(
-    page.locator(".contribution-row").filter({ hasText: "Oskar" }),
+    page.locator(".split-person").filter({ hasText: "Oskar" }),
   ).toContainText("200 Min.");
   await expect(
-    page.locator(".contribution-row").filter({ hasText: "August" }),
+    page.locator(".split-person").filter({ hasText: "August" }),
   ).toContainText("300 Min.");
   await expect(
-    page.locator(".contribution-row").filter({ hasText: "Max" }),
+    page.locator(".split-person").filter({ hasText: "Max" }),
   ).toContainText("100 Min.");
   await page.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -407,4 +410,46 @@ test("Rechtliches: Datenschutzerklärung, Nutzungsbedingungen und Impressum auf 
     page.getByRole("button", { name: "Demo ausprobieren" }),
   ).toBeVisible();
   await context.close();
+});
+
+test("Paket nach Teilnehmenden und Minutenbedarf aufteilen", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/?demo=1");
+  await page
+    .locator(".mobile-nav")
+    .getByRole("button", { name: "Guthaben", exact: true })
+    .click();
+  const open = page.getByRole("button", { name: "Guthaben aufladen" });
+  await open.click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Minuten", { exact: true }).fill("100");
+  await dialog.getByLabel("Paketpreis (CHF)").fill("10");
+  await dialog.getByRole("checkbox", { name: "August" }).uncheck();
+  await expect(
+    dialog.locator(".split-person").filter({ hasText: "Max" }),
+  ).toContainText(/50 Min.*5\.00/);
+  await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(
+    page.locator(".account-item").filter({ hasText: "Max" }),
+  ).toContainText("197");
+  await open.click();
+  await dialog.getByLabel("Minuten", { exact: true }).fill("100");
+  await dialog.getByLabel("Paketpreis (CHF)").fill("10");
+  await dialog.getByRole("button", { name: "Nach Minutenbedarf" }).click();
+  await dialog.getByLabel("Minutenbedarf von Oskar").fill("70");
+  await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel("Minutenbedarf von August").fill("30");
+  await expect(
+    dialog.locator(".split-person").filter({ hasText: "Oskar" }),
+  ).toContainText(/70 Min.*7\.00/);
+  await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(
+    page.locator(".account-item").filter({ hasText: "Oskar" }),
+  ).toContainText("269");
+  await expect(
+    page.locator(".account-item").filter({ hasText: "August" }),
+  ).toContainText("177");
 });
