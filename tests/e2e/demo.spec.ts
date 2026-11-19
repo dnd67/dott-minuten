@@ -42,9 +42,25 @@ test("Demo: Fahrt, Guthaben, Paket, Storno, Filter und Einladung", async ({
     .getByRole("button", { name: "Stornieren", exact: true })
     .click();
   await expect(page.getByText("Storniert · Doppelt")).toBeVisible();
+  await page.getByLabel("Status", { exact: true }).selectOption("voided");
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.getByText("+15 Min. zurückgebucht")).toBeVisible();
+  await page.getByLabel("Status", { exact: true }).selectOption("active");
+  await expect(page.getByText("Storniert · Doppelt")).toHaveCount(0);
   await nav("Statistik").click();
   await page.getByLabel("Person", { exact: true }).selectOption("demo-0");
   await expect(page.locator(".stats-person")).toHaveCount(1);
+  await nav("Mitglieder").click();
+  await page
+    .getByRole("button", { name: "Name ändern von Oskar", exact: true })
+    .click();
+  await page.getByLabel("Anzeigename").fill("Oskar Neu");
+  await page.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(page.getByText("Oskar Neu (du)", { exact: true })).toBeVisible();
+  await nav("Übersicht").click();
+  await expect(
+    page.getByRole("heading", { name: "Hoi Oskar Neu" }),
+  ).toBeVisible();
   await nav("Mitglieder").click();
   await page.getByRole("button", { name: "Einladung erstellen" }).click();
   await expect(page.getByText("demo-einladung", { exact: true })).toBeVisible();
@@ -94,6 +110,15 @@ test("iPhone-Abmessungen: alle Seiten bedienbar, Dialog und Offline-Hinweis", as
     .locator(".mobile-nav")
     .getByRole("button", { name: "Mitglieder", exact: true })
     .click();
+  await page
+    .getByRole("button", { name: "Name ändern von Max", exact: true })
+    .click();
+  await page.getByLabel("Anzeigename").fill("Max Neu");
+  await page.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(page.getByText("Max Neu", { exact: true })).toBeVisible();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
   await page.getByRole("button", { name: "Abmelden", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Demo ausprobieren" }),

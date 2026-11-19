@@ -10,10 +10,10 @@ Jede Person hat einen eigenen Login und trägt ihre Fahrzeit und Pausierzeit **m
 
 ## Rollen
 
-| Rolle    | Möglichkeiten                                                                                                                                |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Mitglied | Eigene Fahrten erfassen; Gruppenfahrten, Guthaben, Journal, Pakete und Statistiken ansehen.                                                  |
-| Admin    | Zusätzlich Mitglieder einladen, aktivieren/deaktivieren und Rollen verwalten, Guthaben gutschreiben, Pakete erfassen und Fahrten stornieren. |
+| Rolle    | Möglichkeiten                                                                                                                                                            |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Mitglied | Eigenen Anzeigenamen ändern; eigene Fahrten erfassen; Gruppenfahrten, Guthaben, Journal, Pakete und Statistiken ansehen.                                                 |
+| Admin    | Zusätzlich alle Mitgliedsnamen ändern, Mitglieder einladen, aktivieren/deaktivieren und Rollen verwalten, Guthaben gutschreiben, Pakete erfassen und Fahrten stornieren. |
 
 Neue Mitglieder starten bei 0 Minuten. Mindestens ein aktiver Admin bleibt erhalten. Deaktivierte Personen verlieren den Zugriff, bleiben aber in der Historie sichtbar. Jede Gruppe ist gegenüber fremden Logins abgeschirmt.
 
@@ -27,7 +27,9 @@ Neue Mitglieder starten bei 0 Minuten. Mindestens ein aktiver Admin bleibt erhal
 
 **14 Minuten Fahrt + 1 Minute Pause belasten 15 Minuten.** Freischaltgebühren werden ignoriert. Ein Fehler oder ein nicht bestätigter Speichervorgang darf keine unbemerkte Doppelbuchung erzeugen. Bei unklarem Ausgang nach vollständigem Neuladen zuerst die Fahrtenliste kontrollieren; inhaltlich gleiche manuelle Fahrten werden noch nicht automatisch als Duplikate erkannt.
 
-Ein Admin storniert fehlerhafte Fahrten mit Grund. Eine Gegenbuchung gibt die Minuten zurück. Die richtige Fahrt wird danach neu erfasst. Negative Salden sind sichtbar, blockieren aber keine tatsächlich gefahrene Fahrt.
+Unter **Mitglieder → Name ändern** können Mitglieder ihren eigenen und Admins den Anzeigenamen jeder Person ändern. Die Mitglieds-ID und damit alle Guthaben-/Fahrtzuordnungen bleiben erhalten.
+
+Ein Admin storniert fehlerhafte Fahrten mit Grund. Unter **Fahrten → Status → Storno-Verlauf** stehen ursprüngliche Fahrminuten, Grund, Stornozeitpunkt, ausführende Person und zurückgebuchte Minuten. Zeitraumfilter beziehen sich dort auf das Stornodatum; die Anzeige ist nach neuestem Storno sortiert. Eine Gegenbuchung gibt die Minuten zurück. Die richtige Fahrt wird danach neu erfasst. Negative Salden sind sichtbar, blockieren aber keine tatsächlich gefahrene Fahrt.
 
 ## Seiten
 

@@ -8,13 +8,13 @@ Eine iPhone-taugliche Web-App für eure gemeinsamen Scooter-Minutenpakete. Jede 
 
 - Persönliche Anmeldung mit Supabase Auth per E-Mail-Code oder Anmeldelink.
 - Gruppe erstellen, Freunde mit zeitlich begrenztem Einladungscode hinzufügen.
-- Beliebig erweiterbare Mitgliederliste mit Admin- und Mitgliedsrollen.
+- Beliebig erweiterbare Mitgliederliste mit Admin- und Mitgliedsrollen. Eigene Namen lassen sich ändern; Admins können alle Mitgliedsnamen ändern.
 - Eigene Fahrten manuell erfassen: **Verbrauch = Fahrzeit + Pausierzeit**.
 - Frei wählbare positive Minutengutschriften durch Admins, keine festen Aufladepakete.
 - Persönliche Salden, gemeinsamer Paketbestand und nachvollziehbares Buchungsjournal.
 - Paketkäufe mit Minuten, CHF-Preis, Kaufzeitpunkt und zahlender Person dokumentieren.
 - Verbrauchsstatistik nach Person und Zeitraum, Fahr- und Pausierzeit getrennt.
-- Fahrten durch Admins stornieren: Gegenbuchung statt Löschen.
+- Fahrten durch Admins stornieren: Gegenbuchung statt Löschen. Eigener Storno-Verlauf mit Grund, Zeitpunkt, ausführender Person und zurückgegebenen Minuten.
 - Supabase Realtime plus erneutes Laden nach App-Rückkehr, Verbindungsaufbau und alle 30 Sekunden.
 - Home-Bildschirm-Installation mit App-Manifest und iPhone-Icon.
 - Expliziter Demo-Modus mit Oskar, August und Max. Die Beispieldaten bleiben auf dem jeweiligen Gerät.
@@ -33,7 +33,7 @@ npm run dev
 
 Ohne Supabase-Konfiguration zeigt die Startseite einen Einrichtungslink und den Button **Demo ausprobieren**. Die Demo lässt sich auch unter `http://localhost:3000/?demo=1` öffnen. Es gibt keine stillschweigende Umschaltung von echten Daten auf Beispieldaten.
 
-Für den gemeinsamen Betrieb die SQL-Migration in Supabase ausführen und die zwei öffentlichen Projektwerte in `.env.local` beziehungsweise Vercel hinterlegen. Vollständige Schritte einschliesslich E-Mail-Zustellung: **[Supabase und Vercel einrichten](docs/setup.md)**.
+Für den gemeinsamen Betrieb die SQL-Migrationen in Supabase der Reihe nach ausführen und die zwei öffentlichen Projektwerte in `.env.local` beziehungsweise Vercel hinterlegen. Vollständige Schritte einschliesslich E-Mail-Zustellung: **[Supabase und Vercel einrichten](docs/setup.md)**.
 
 ## Prüfen
 

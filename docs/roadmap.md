@@ -7,6 +7,8 @@
 - Next.js/TypeScript-Oberfläche für Desktop und iPhone mit Home-Bildschirm-Manifest.
 - Supabase-Anmeldung, Gruppenstart und Einladungscodes.
 - Manuelle Fahrten mit Fahr- und Pausenminuten.
+- Eigene Anzeigenamen ändern; Admins können alle Mitgliedsnamen bearbeiten.
+- Storno-Verlauf mit Zeitpunkt, Grund, ausführender Person und zurückgebuchten Minuten.
 - Admin-Gutschriften, Paketkäufe, Mitgliederrollen und Fahrtstornos.
 - Journalbasierte Salden, Verbrauchsstatistik und gekennzeichnete Kostenschätzungen.
 - Gemeinsame Dashboard-Abfrage, Realtime-Hinweise, Abgleich nach Rückkehr und periodisches Nachladen.

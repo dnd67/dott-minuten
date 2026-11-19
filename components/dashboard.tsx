@@ -42,7 +42,7 @@ import {
 } from "@/lib/domain";
 
 type Tab = "overview" | "rides" | "balance" | "stats" | "members";
-type Modal = "ride" | "credit" | "package" | "void" | null;
+type Modal = "ride" | "credit" | "package" | "void" | "rename" | null;
 type Props = {
   data: Snapshot;
   groups: Group[];
@@ -86,6 +86,8 @@ export function Dashboard(p: Props) {
   const [tab, setTab] = useState<Tab>("overview");
   const [modal, setModal] = useState<Modal>(null),
     [voidRide, setVoidRide] = useState<Ride | null>(null);
+  const [renameMember, setRenameMember] = useState<Member | null>(null);
+  const [rideStatus, setRideStatus] = useState("all");
   const [person, setPerson] = useState("all"),
     [period, setPeriod] = useState("all");
   const [code, setCode] = useState(""),
@@ -115,13 +117,23 @@ export function Dashboard(p: Props) {
   const sorted = [...data.rides].sort((a, b) =>
     b.occurred_at.localeCompare(a.occurred_at),
   );
-  const shownRides = sorted.filter(
-    (r) =>
-      (person === "all" || r.member_id === person) &&
-      (period === "all" ||
-        new Date(r.occurred_at).getTime() >=
-          Date.now() - Number(period) * 86400000),
-  );
+  const shownRides = [...sorted]
+    .sort((a, b) =>
+      rideStatus === "voided"
+        ? (b.voided_at ?? "").localeCompare(a.voided_at ?? "")
+        : 0,
+    )
+    .filter(
+      (r) =>
+        (rideStatus === "all" ||
+          (rideStatus === "voided" ? Boolean(r.voided_at) : !r.voided_at)) &&
+        (person === "all" || r.member_id === person) &&
+        (period === "all" ||
+          new Date(
+            rideStatus === "voided" ? r.voided_at! : r.occurred_at,
+          ).getTime() >=
+            Date.now() - Number(period) * 86400000),
+    );
   const month = zurichKey(new Date()).slice(0, 7);
   const monthRides = all.rides.filter((r) =>
     zurichKey(new Date(r.occurred_at)).startsWith(month),
@@ -135,6 +147,22 @@ export function Dashboard(p: Props) {
   }
   const filters = (
     <div className="filters">
+      {tab === "rides" && (
+        <>
+          <label className="sr-only" htmlFor="ride-status">
+            Status
+          </label>
+          <select
+            id="ride-status"
+            value={rideStatus}
+            onChange={(e) => setRideStatus(e.target.value)}
+          >
+            <option value="all">Alle Fahrten</option>
+            <option value="active">Aktive Fahrten</option>
+            <option value="voided">Storno-Verlauf</option>
+          </select>
+        </>
+      )}
       <label className="sr-only" htmlFor="person">
         Person
       </label>
@@ -199,7 +227,24 @@ export function Dashboard(p: Props) {
               <td>
                 <div>{dateLabel(r.occurred_at, true)}</div>
                 {r.voided_at ? (
-                  <small>Storniert · {r.void_reason}</small>
+                  <>
+                    <small className="cancellation-reason">
+                      Storniert · {r.void_reason}
+                    </small>
+                    {r.note && (
+                      <small className="cancellation-reason">
+                        Notiz: {r.note}
+                      </small>
+                    )}
+                    {!compact && (
+                      <small className="cancellation-details">
+                        Storniert am {dateLabel(r.voided_at, true)} von{" "}
+                        {member(r.voided_by_member_id ?? "")?.display_name ??
+                          "Person nicht hinterlegt"}
+                        <br />+{minutes(r.charged_seconds)} Min. zurückgebucht
+                      </small>
+                    )}
+                  </>
                 ) : (
                   r.note && <small>{r.note}</small>
                 )}
@@ -212,15 +257,16 @@ export function Dashboard(p: Props) {
               </td>
               <td>
                 <span className={`pill ${r.voided_at ? "muted" : "mint"}`}>
-                  {r.voided_at
-                    ? "Storniert"
-                    : `${minutes(r.charged_seconds)} Min.`}
+                  {minutes(r.charged_seconds)} Min.
+                  {r.voided_at ? " · storniert" : ""}
                 </span>
               </td>
               {!compact && (
                 <>
                   <td>
-                    {r.estimated_cost_rappen === null ? (
+                    {r.voided_at ? (
+                      <span className="unit">Entfällt</span>
+                    ) : r.estimated_cost_rappen === null ? (
                       <span className="unit">Offen</span>
                     ) : (
                       <>
@@ -552,8 +598,16 @@ export function Dashboard(p: Props) {
           {tab === "rides" && (
             <section className="panel">
               <PanelHeading
-                title={`${shownRides.length} Fahrten`}
-                description="Stornierte Fahrten bleiben zur Nachvollziehbarkeit erhalten."
+                title={
+                  rideStatus === "voided"
+                    ? `${shownRides.length} stornierte Fahrten`
+                    : `${shownRides.length} Fahrten`
+                }
+                description={
+                  rideStatus === "voided"
+                    ? "Nach Stornozeitpunkt sortiert und gefiltert. Jede Fahrt bleibt mit Grund und Gegenbuchung erhalten."
+                    : "Stornierte Fahrten bleiben zur Nachvollziehbarkeit erhalten."
+                }
                 aside={filters}
               />
               {table(shownRides)}
@@ -911,39 +965,60 @@ export function Dashboard(p: Props) {
                       <span className={`pill ${m.active ? "mint" : "muted"}`}>
                         {m.active ? "Aktiv" : "Inaktiv"}
                       </span>
-                      {admin && (
+                      {(admin || m.id === me?.id) && (
                         <div className="member-actions">
-                          <label className="sr-only" htmlFor={`role-${m.id}`}>
-                            Rolle von {m.display_name}
-                          </label>
-                          <select
-                            id={`role-${m.id}`}
-                            value={m.role}
-                            disabled={p.busy}
-                            onChange={(e) =>
-                              void p.mutate("update_member", {
-                                p_member_id: m.id,
-                                p_role: e.target.value,
-                                p_active: m.active,
-                              })
-                            }
-                          >
-                            <option value="member">Mitglied</option>
-                            <option value="admin">Admin</option>
-                          </select>
                           <button
                             className="text-link"
-                            disabled={p.busy || m.id === me?.id}
-                            onClick={() =>
-                              void p.mutate("update_member", {
-                                p_member_id: m.id,
-                                p_role: m.role,
-                                p_active: !m.active,
-                              })
-                            }
+                            disabled={p.busy}
+                            onClick={() => {
+                              setRenameMember(m);
+                              open("rename");
+                            }}
                           >
-                            {m.active ? "Deaktivieren" : "Aktivieren"}
+                            Name ändern
+                            <span className="sr-only">
+                              {" "}
+                              von {m.display_name}
+                            </span>
                           </button>
+                          {admin && (
+                            <>
+                              <label
+                                className="sr-only"
+                                htmlFor={`role-${m.id}`}
+                              >
+                                Rolle von {m.display_name}
+                              </label>
+                              <select
+                                id={`role-${m.id}`}
+                                value={m.role}
+                                disabled={p.busy}
+                                onChange={(e) =>
+                                  void p.mutate("update_member", {
+                                    p_member_id: m.id,
+                                    p_role: e.target.value,
+                                    p_active: m.active,
+                                  })
+                                }
+                              >
+                                <option value="member">Mitglied</option>
+                                <option value="admin">Admin</option>
+                              </select>
+                              <button
+                                className="text-link"
+                                disabled={p.busy || m.id === me?.id}
+                                onClick={() =>
+                                  void p.mutate("update_member", {
+                                    p_member_id: m.id,
+                                    p_role: m.role,
+                                    p_active: !m.active,
+                                  })
+                                }
+                              >
+                                {m.active ? "Deaktivieren" : "Aktivieren"}
+                              </button>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1026,6 +1101,7 @@ export function Dashboard(p: Props) {
           data={data}
           me={me}
           voidRide={voidRide}
+          renameMember={renameMember}
           busy={p.busy}
           remoteError={p.error}
           close={() => {
@@ -1158,6 +1234,7 @@ function EntryDialog({
   data,
   me,
   voidRide,
+  renameMember,
   busy,
   remoteError,
   close,
@@ -1167,6 +1244,7 @@ function EntryDialog({
   data: Snapshot;
   me?: Member;
   voidRide: Ride | null;
+  renameMember: Member | null;
   busy: boolean;
   remoteError: string;
   close: () => void;
@@ -1191,7 +1269,9 @@ function EntryDialog({
         ? "Minuten gutschreiben."
         : kind === "package"
           ? "Ein neues Minutenpaket."
-          : "Fahrt stornieren.";
+          : kind === "rename"
+            ? "Name ändern."
+            : "Fahrt stornieren.";
   const description =
     kind === "ride"
       ? "Trage die Zeiten aus deinen Fahrtdetails ein. Die Pause zählt mit."
@@ -1199,7 +1279,9 @@ function EntryDialog({
         ? "Verteile Guthaben innerhalb eurer Gruppe."
         : kind === "package"
           ? "Dokumentiere euren Kauf. Persönliches Guthaben wird separat zugeteilt."
-          : "Die Minuten werden mit einer Gegenbuchung zurückgegeben. Die ursprüngliche Fahrt bleibt sichtbar.";
+          : kind === "rename"
+            ? "Der neue Name gilt in der ganzen Gruppe. Fahrten und Guthaben bleiben derselben Person zugeordnet."
+            : "Die Minuten werden mit einer Gegenbuchung zurückgegeben. Die ursprüngliche Fahrt bleibt sichtbar.";
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (busy) return;
@@ -1229,7 +1311,15 @@ function EntryDialog({
           p_purchased_at: new Date(str("when")).toISOString(),
           p_note: str("note"),
         });
-      else if (voidRide)
+      else if (kind === "rename" && renameMember) {
+        const name = str("display_name").trim();
+        if (!name || name.length > 60)
+          throw new Error("Bitte einen Namen mit 1 bis 60 Zeichen eingeben.");
+        await onSave("rename_member", {
+          p_member_id: renameMember.id,
+          p_display_name: name,
+        });
+      } else if (voidRide)
         await onSave("void_ride", {
           p_ride_id: voidRide.id,
           p_reason: str("reason"),
@@ -1267,6 +1357,19 @@ function EntryDialog({
         <h2 id="dialog-title">{title}</h2>
         <p>{description}</p>
         <form onSubmit={submit}>
+          {kind === "rename" && (
+            <label>
+              Anzeigename
+              <input
+                ref={first}
+                name="display_name"
+                required
+                maxLength={60}
+                defaultValue={renameMember?.display_name}
+                autoComplete="off"
+              />
+            </label>
+          )}
           {kind === "ride" && (
             <>
               <div className="selected-person">

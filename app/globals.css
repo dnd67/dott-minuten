@@ -2067,3 +2067,34 @@ td > div + small {
   position: relative;
   max-width: 100%;
 }
+.cancellation-reason,
+.cancellation-details {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.6;
+}
+.voided td {
+  opacity: 0.9;
+}
+.member-actions {
+  flex-wrap: wrap;
+}
+.page-heading > div,
+.profile > span:nth-child(2),
+.account-item > div,
+.selected-person > div {
+  min-width: 0;
+}
+.page-heading h1,
+.account-item strong,
+.selected-person strong,
+.stats-person strong {
+  overflow-wrap: anywhere;
+}
+.profile strong,
+.crew-info strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

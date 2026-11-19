@@ -148,6 +148,7 @@ export function demoAction(
     if (r && !r.voided_at) {
       r.voided_at = now;
       r.void_reason = String(args.p_reason);
+      r.voided_by_member_id = "demo-0";
       data.entries.push({
         id,
         group_id: gid,
@@ -159,6 +160,13 @@ export function demoAction(
         created_at: now,
       });
     }
+  } else if (action === "rename_member") {
+    const name = String(args.p_display_name).trim();
+    if (!name || name.length > 60)
+      throw new Error("Bitte einen Namen mit 1 bis 60 Zeichen eingeben.");
+    const m = data.members.find((m) => m.id === args.p_member_id);
+    if (!m) throw new Error("Mitglied nicht gefunden.");
+    m.display_name = name;
   } else if (action === "update_member") {
     const m = data.members.find((m) => m.id === args.p_member_id);
     if (m) {

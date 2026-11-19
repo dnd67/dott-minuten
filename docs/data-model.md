@@ -1,6 +1,6 @@
 # Datenmodell und Abrechnung
 
-[Zur Übersicht](../README.md) · [Ausführbare SQL-Migration](../supabase/migrations/202611180001_initial.sql)
+[Zur Übersicht](../README.md) · [Grundschema](../supabase/migrations/202611180001_initial.sql) · [Ergänzung für Namen und Storno-Verlauf](../supabase/migrations/202611190001_names_and_cancellations.sql)
 
 ## Implementierte Tabellen
 
@@ -15,6 +15,8 @@
 | `app_private.commands` | Idempotenzschlüssel mit Aktion und Nutzdaten; für Browser nicht lesbar                                                    |
 
 Tabellenbeziehungen sichern Gruppenidentität und Personenbezüge über zusammengesetzte Fremdschlüssel ab. Alle öffentlichen Tabellen sind durch RLS geschützt. Schreibrechte existieren ausschliesslich über die vorgesehenen RPCs.
+
+Namensänderungen verändern ausschliesslich `memberships.display_name`. Die Person darf den eigenen Anzeigenamen innerhalb der Gruppe ändern; Admins dürfen auch andere Mitglieder umbenennen. Die RPC `rename_member` prüft Berechtigung, Gruppenbezug, Länge (1–60 Zeichen) und Idempotenz. Historische Fahrten und Journalbezüge behalten ihre IDs und zeigen den aktuellen Anzeigenamen.
 
 ## Zeit und Guthaben
 
@@ -35,7 +37,7 @@ Interne Gutschriften sind frei wählbare positive Ganzminutenbeträge bis zur te
 
 - Ein Mitglied erfasst nur eigene Fahrten. Die Person wird serverseitig aus dem Login abgeleitet.
 - Admins können positive Gutschriften buchen, Pakete erfassen und Fahrten stornieren.
-- Eine Fahrt erzeugt genau einen negativen Journalbetrag, eine Stornierung genau eine Gegenbuchung. Die Originalfahrt bleibt erhalten und wird aus aktiven Statistiken herausgenommen.
+- Eine Fahrt erzeugt genau einen negativen Journalbetrag, eine Stornierung genau eine Gegenbuchung. `voided_by_member_id` referenziert die ausführende Mitgliedschaft derselben Gruppe; `voided_at` und `void_reason` halten Zeitpunkt und Grund fest. Die Originalfahrt bleibt erhalten und wird aus aktiven Statistiken herausgenommen.
 - Ein identischer Schreibversuch mit gleichem Idempotenzschlüssel ist wirkungslos. Abweichende Nutzdaten mit demselben Schlüssel werden zurückgewiesen.
 - Alle Mutationen prüfen zuerst die aktive Mitgliedschaft und sperren die Gruppe für die kurze Transaktion. Eine fehlgeschlagene Aktion hinterlässt keine Teilbuchungen oder reservierten Idempotenzschlüssel.
 - Korrekturen einer Fahrt erfolgen durch Storno und neue eigene Erfassung. Direkte Änderungen oder Löschungen im Journal sind nicht zulässig.

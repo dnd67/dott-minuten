@@ -8,13 +8,29 @@ Diese Schritte werden einmal für eure Crew erledigt. GitHub enthält den Code; 
 
 1. Auf [supabase.com](https://supabase.com) ein Konto erstellen und ein neues Projekt anlegen.
 2. Eine EU-Region auswählen, möglichst nahe an Zürich. Das Datenbankpasswort sicher speichern.
-3. Im **SQL Editor** die gesamte Datei [202611180001_initial.sql](../supabase/migrations/202611180001_initial.sql) einfügen und einmal ausführen. Sie erstellt Tabellen, Zugriffsschutz, Buchungsfunktionen und die Realtime-Freigaben gemeinsam in einer Transaktion.
+3. Im **SQL Editor** die SQL-Dateien in Reihenfolge ausführen: zuerst [202611180001_initial.sql](../supabase/migrations/202611180001_initial.sql), danach [202611190001_names_and_cancellations.sql](../supabase/migrations/202611190001_names_and_cancellations.sql). Die erste erstellt Tabellen und Buchungsfunktionen, die zweite ergänzt Namensänderungen und den Storno-Akteur. Jede Datei wird vollständig und jeweils einmal ausgeführt.
 4. Bei Erfolg erscheinen `groups`, `memberships`, `rides`, `minute_entries`, `packages` und `invitations` im Table Editor. Das Schema `app_private` enthält interne Hilfsfunktionen und die Idempotenzverwaltung.
 5. Unter **Project Settings → API / API Keys** die Projekt-URL und den **Publishable Key** kopieren. Falls das Projekt noch Legacy Keys verwendet, funktioniert auch der **anon public** Key.
 
 Keine Tabellen für anonymen Schreibzugriff öffnen. Die Migration enthält bereits sämtliche erforderlichen Berechtigungen. Keine Service-Role-Keys im Browser oder in `NEXT_PUBLIC_`-Variablen verwenden.
 
 Die Migration ist eine initiale Migration für ein leeres Projekt. Nicht erneut über eine vorhandene Installation ausführen; spätere Schemaänderungen erhalten eine eigene Migration. Alternativ kann sie mit der Supabase CLI als reguläre Migration angewendet werden.
+
+## Bestehende Installation aktualisieren
+
+Wenn die erste Migration schon ausgeführt wurde, **nur die neue Datei** [202611190001_names_and_cancellations.sql](../supabase/migrations/202611190001_names_and_cancellations.sql) im SQL Editor ausführen. Gruppen, Guthaben und Fahrten bleiben erhalten. Die Person hinter früheren Stornos wird, soweit möglich, aus der Gegenbuchung ergänzt. In der lokalen Demo ist keine SQL-Einrichtung nötig.
+
+Zum Aktualisieren eines lokalen Windows-Checkouts zuerst den Entwicklungsserver mit `Ctrl+C` stoppen, dann:
+
+```powershell
+cd C:\privatedev\dott-minuten
+git pull
+npm.cmd run dev
+```
+
+## Handyansicht auf dem Laptop
+
+In Chrome oder Edge die App öffnen, `F12` drücken und danach mit `Ctrl+Shift+M` die Geräteansicht einschalten. Ein iPhone-Gerät wählen oder eine Breite von 390 Pixeln einstellen. Bei manchen Laptops ist für die Entwicklertools `Fn+F12` nötig. Erneutes `Ctrl+Shift+M` schaltet zur normalen Ansicht zurück. Dies prüft das responsive Layout, simuliert aber nicht sämtliche Eigenheiten von echtem Safari auf einem iPhone.
 
 ## 2. E-Mail-Anmeldung konfigurieren
 

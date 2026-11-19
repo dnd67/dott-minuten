@@ -20,6 +20,7 @@ export type Ride = {
   estimated_cost_rappen: number | null;
   voided_at: string | null;
   void_reason?: string;
+  voided_by_member_id?: string | null;
 };
 export type Entry = {
   id: string;
@@ -52,6 +53,7 @@ export type Action =
   | "credit_minutes"
   | "record_package"
   | "void_ride"
+  | "rename_member"
   | "update_member"
   | "create_invite";
 export type RpcArgs = Record<string, string | number | boolean>;

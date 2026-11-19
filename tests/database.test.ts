@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
 
@@ -16,15 +16,12 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
     grant execute on function auth.uid() to authenticated, anon;`);
   for (const id of [owner, friend, outsider])
     await db.query("insert into auth.users values($1)", [id]);
-  await db.exec(
-    await readFile(
-      new URL(
-        "../supabase/migrations/202611180001_initial.sql",
-        import.meta.url,
-      ),
-      "utf8",
-    ),
-  );
+  const migrationDir = new URL("../supabase/migrations/", import.meta.url);
+  for (const file of (await readdir(migrationDir))
+    .filter((f) => f.endsWith(".sql"))
+    .sort()) {
+    await db.exec(await readFile(new URL(file, migrationDir), "utf8"));
+  }
   async function as<T = Record<string, unknown>>(
     user: string,
     sql: string,
@@ -292,6 +289,94 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
     },
   );
   await t.test(
+    "Namen ändern: eigener Name, Adminrechte und stabile Buchungszuordnung",
+    async () => {
+      const rename = randomUUID();
+      await as(friend, "select public.rename_member($1,$2,$3,$4)", [
+        gid,
+        rename,
+        friendMember,
+        "  August Neu  ",
+      ]);
+      await as(friend, "select public.rename_member($1,$2,$3,$4)", [
+        gid,
+        rename,
+        friendMember,
+        "August Neu",
+      ]);
+      assert.equal(
+        (
+          await as<{ display_name: string }>(
+            friend,
+            "select display_name from public.memberships where id=$1",
+            [friendMember],
+          )
+        )[0].display_name,
+        "August Neu",
+      );
+      await assert.rejects(
+        () =>
+          as(friend, "select public.rename_member($1,$2,$3,$4)", [
+            gid,
+            randomUUID(),
+            ownerMember,
+            "Fremder Name",
+          ]),
+        /nur deinen eigenen/,
+      );
+      await assert.rejects(
+        () =>
+          as(outsider, "select public.rename_member($1,$2,$3,$4)", [
+            gid,
+            randomUUID(),
+            ownerMember,
+            "Fremder Name",
+          ]),
+        /Keine Berechtigung/,
+      );
+      for (const name of ["  ", "x".repeat(61)])
+        await assert.rejects(
+          () =>
+            as(friend, "select public.rename_member($1,$2,$3,$4)", [
+              gid,
+              randomUUID(),
+              friendMember,
+              name,
+            ]),
+          /1 bis 60/,
+        );
+      await as(owner, "select public.rename_member($1,$2,$3,$4)", [
+        gid,
+        randomUUID(),
+        friendMember,
+        "August",
+      ]);
+      assert.equal(
+        (
+          await as<{ member_id: string }>(
+            owner,
+            "select member_id from public.rides where id=$1",
+            [request],
+          )
+        )[0].member_id,
+        friendMember,
+      );
+    },
+  );
+  await t.test(
+    "Storno-Verlauf enthält Zeitpunkt, Akteur und genau eine Gegenbuchung",
+    async () => {
+      const [r] = await as<{
+        voided_at: string;
+        void_reason: string;
+        voided_by_member_id: string;
+      }>(owner, "select * from public.rides where id=$1", [request]);
+      assert.ok(r.voided_at);
+      assert.equal(r.void_reason, "Doppelt");
+      assert.equal(r.voided_by_member_id, ownerMember);
+    },
+  );
+  await t.test(
     "Letzter Admin bleibt; deaktiviertes Mitglied verliert alle Gruppenrechte",
     async () => {
       await assert.rejects(
@@ -339,5 +424,61 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
       assert.ok(value.entries.length >= 5);
     },
   );
+  await db.close();
+});
+
+test("Upgrade ergänzt den Akteur alter Stornos ohne Guthabenänderung", async () => {
+  const db = new PGlite();
+  await db.exec(`create role anon;create role authenticated;create schema auth;
+    create table auth.users(id uuid primary key);
+    create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;`);
+  await db.exec(
+    await readFile(
+      new URL(
+        "../supabase/migrations/202611180001_initial.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  const user = randomUUID(),
+    req = randomUUID(),
+    ride = randomUUID();
+  await db.query("insert into auth.users values($1)", [user]);
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [user]);
+  const [{ gid }] = (
+    await db.query<{ gid: string }>(
+      "select public.create_group('Crew','Oskar',$1) as gid",
+      [req],
+    )
+  ).rows;
+  await db.query(
+    "select public.record_ride($1,$2,'2026-01-01T12:00Z',14,1,'')",
+    [gid, ride],
+  );
+  await db.query("select public.void_ride($1,$2,$3,'Versehentlich doppelt')", [
+    gid,
+    randomUUID(),
+    ride,
+  ]);
+  await db.exec(
+    await readFile(
+      new URL(
+        "../supabase/migrations/202611190001_names_and_cancellations.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  const [{ actor, balance }] = (
+    await db.query<{ actor: string; balance: string }>(
+      `select m.user_id as actor,(select sum(seconds) from public.minute_entries) as balance
+    from public.rides r join public.memberships m on m.id=r.voided_by_member_id where r.id=$1`,
+      [ride],
+    )
+  ).rows;
+  assert.equal(actor, user);
+  assert.equal(Number(balance), 0);
+  assert.equal((await db.query("select * from public.rides")).rows.length, 1);
   await db.close();
 });
