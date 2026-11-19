@@ -1,4 +1,4 @@
--- Optionale Fahrtorte (nur bei aktiver Verwendung erfasst) und Feedback-Vorbereitung für den Launch.
+-- Optionale Fahrtorte (nur bei aktiver Verwendung erfasst) und Feedback-Tabelle für den Launch.
 begin;
 
 alter table public.rides
@@ -11,21 +11,19 @@ alter table public.rides
   add constraint rides_start_coords_pair check ((start_lat is null) = (start_lng is null)),
   add constraint rides_end_coords_pair check ((end_lat is null) = (end_lng is null));
 
-drop function public.record_ride(uuid,uuid,timestamptz,integer,integer,text);
-
-create function public.record_ride(
+create or replace function public.record_ride(
   p_group_id uuid,
   p_request_id uuid,
   p_occurred_at timestamptz,
   p_drive_minutes integer,
   p_pause_minutes integer,
-  p_note text default '',
-  p_start_label text default '',
-  p_start_lat double precision default null,
-  p_start_lng double precision default null,
-  p_end_label text default '',
-  p_end_lat double precision default null,
-  p_end_lng double precision default null
+  p_note text,
+  p_start_label text,
+  p_start_lat double precision,
+  p_start_lng double precision,
+  p_end_label text,
+  p_end_lat double precision,
+  p_end_lng double precision
 )
 returns uuid language plpgsql security definer set search_path = '' as $$
 declare
