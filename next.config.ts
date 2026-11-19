@@ -8,7 +8,7 @@ const csp = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://va.vercel-scripts.com https://vitals.vercel-insights.com",
+  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api3.geo.admin.ch https://va.vercel-scripts.com https://vitals.vercel-insights.com",
   "manifest-src 'self'",
   "worker-src 'self' blob:",
   "frame-ancestors 'none'",

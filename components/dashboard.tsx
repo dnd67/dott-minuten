@@ -32,6 +32,7 @@ import {
   Smartphone,
   Sparkles,
   Sun,
+  Terminal,
   Ticket,
   TrendingUp,
   Users,
@@ -62,6 +63,7 @@ import {
   type Snapshot,
 } from "@/lib/domain";
 import {
+  canonicalPlaceLabel,
   clearActiveUnlock,
   knownPlaceSuggestions,
   loadActiveUnlock,
@@ -70,6 +72,7 @@ import {
   type ActiveUnlock,
   type Spot,
 } from "@/lib/location";
+import { DevDashboard } from "./dev-dashboard";
 import { DynamicIslandDialog } from "./dynamic-island-dialog";
 import { FeedbackDialog } from "./feedback-dialog";
 import { LocationStats } from "./location-stats";
@@ -89,7 +92,7 @@ import {
 import { PasswordDashboard } from "./password-dashboard";
 import { ThemeCycleButton, ThemeSegmented } from "./theme-toggle";
 
-type Tab = "overview" | "rides" | "balance" | "stats" | "members";
+type Tab = "overview" | "rides" | "balance" | "stats" | "members" | "dev";
 type Modal =
   | "ride"
   | "unlock"
@@ -164,9 +167,14 @@ const zurichKey = (date: Date) =>
     day: "2-digit",
   }).format(date);
 
-const routeText = (r: Ride) => {
-  const s = r.start_label?.trim() ?? "";
-  const e = r.end_label?.trim() ?? "";
+const routeText = (r: Ride, places: Snapshot["places"] = []) => {
+  const s = canonicalPlaceLabel(
+    r.start_label,
+    r.start_lat,
+    r.start_lng,
+    places,
+  );
+  const e = canonicalPlaceLabel(r.end_label, r.end_lat, r.end_lng, places);
   if (s && e) return `${s} → ${e}`;
   if (e) return `Ziel: ${e}`;
   if (s) return `Start: ${s}`;
@@ -385,6 +393,7 @@ export function Dashboard(p: Props) {
         label: activeUnlock.startLabel,
         lat: activeUnlock.startLat,
         lng: activeUnlock.startLng,
+        fromGps: Boolean(activeUnlock.startGps),
       },
       coRiderIds: activeUnlock.coRiderIds ?? [],
       fromUnlock: true,
@@ -406,7 +415,10 @@ export function Dashboard(p: Props) {
     setActiveUnlock(next);
   }
 
-  const currentTabLabel = tabs.find((t) => t.id === tab)?.label ?? "Übersicht";
+  const currentTabLabel =
+    tab === "dev"
+      ? "Dev-Dashboard"
+      : (tabs.find((t) => t.id === tab)?.label ?? "Übersicht");
 
   const filters = (
     <div className="filters">
@@ -504,7 +516,7 @@ export function Dashboard(p: Props) {
           <tbody>
             {rows.map((item) => {
               const r = item.ride;
-              const route = routeText(r);
+              const route = routeText(r, data.places);
               const isGroupedShared = item.parts.length > 1;
               const peerNames =
                 !isGroupedShared && r.shared_group_id
@@ -737,6 +749,17 @@ export function Dashboard(p: Props) {
           ))}
         </nav>
         <div className="sidebar-bottom">
+          {admin && (
+            <button
+              type="button"
+              className={`nav-item sidebar-util ${tab === "dev" ? "active" : ""}`}
+              aria-current={tab === "dev" ? "page" : undefined}
+              onClick={() => navigate("dev")}
+            >
+              <Terminal size={18} />
+              <span>Dev-Dashboard</span>
+            </button>
+          )}
           <button
             type="button"
             className="nav-item sidebar-util"
@@ -799,6 +822,17 @@ export function Dashboard(p: Props) {
                     ? "Live verbunden"
                     : "Regelmässiger Abgleich"}
             </span>
+            {admin && (
+              <button
+                type="button"
+                className={`icon-button ${tab === "dev" ? "active-icon-btn" : ""}`}
+                aria-label="Dev-Dashboard öffnen"
+                title="Admin Dev-Dashboard"
+                onClick={() => navigate(tab === "dev" ? "overview" : "dev")}
+              >
+                <Terminal size={16} />
+              </button>
+            )}
             <button
               type="button"
               className="icon-button"
@@ -1485,6 +1519,7 @@ export function Dashboard(p: Props) {
               <LocationStats
                 rides={filtered}
                 members={data.members}
+                places={data.places ?? []}
                 personFilter={person}
                 renderAvatar={avatar}
               />
@@ -1908,6 +1943,14 @@ export function Dashboard(p: Props) {
               </section>
             </>
           )}
+          {tab === "dev" && admin && (
+            <DevDashboard
+              data={data}
+              busy={p.busy}
+              mutate={p.mutate}
+              renderAvatar={avatar}
+            />
+          )}
           {p.demo && (
             <div className="demo-notice">
               <span>
@@ -1937,13 +1980,15 @@ export function Dashboard(p: Props) {
         </main>
       </div>
       <nav className="mobile-nav" aria-label="Mobile Navigation">
-        <span
-          aria-hidden="true"
-          className="tab-indicator"
-          style={{
-            transform: `translateX(${tabs.findIndex((t) => t.id === tab) * 100}%)`,
-          }}
-        />
+        {tabs.some((t) => t.id === tab) && (
+          <span
+            aria-hidden="true"
+            className="tab-indicator"
+            style={{
+              transform: `translateX(${tabs.findIndex((t) => t.id === tab) * 100}%)`,
+            }}
+          />
+        )}
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -1980,6 +2025,7 @@ export function Dashboard(p: Props) {
               startLabel: spot.label.trim(),
               startLat: spot.lat,
               startLng: spot.lng,
+              startGps: Boolean(spot.fromGps),
               coRiderIds,
             };
             saveActiveUnlock(next);
@@ -2238,8 +2284,8 @@ function EntryDialog({
       old.includes(id) ? old.filter((x) => x !== id) : [...old, id],
     );
   const placeSuggestions = useMemo(
-    () => knownPlaceSuggestions(data.rides, 5),
-    [data.rides],
+    () => knownPlaceSuggestions(data.rides, 5, data.places ?? []),
+    [data.rides, data.places],
   );
 
   const [splitMode, setSplitMode] = useState<SplitMode>("equal");
@@ -2314,7 +2360,7 @@ function EntryDialog({
     setError("");
     setLocating(target);
     try {
-      const spot = await requestCurrentSpot(data.rides);
+      const spot = await requestCurrentSpot(data.rides, data.places ?? []);
       if (target === "start") setStartSpot(spot);
       else setEndSpot(spot);
     } catch (err) {
@@ -2385,6 +2431,7 @@ function EntryDialog({
             label: cleanLabel,
             lat: cleanLabel ? startSpot.lat : null,
             lng: cleanLabel ? startSpot.lng : null,
+            fromGps: Boolean(cleanLabel && startSpot.fromGps),
           },
           coRiderIds,
         );
@@ -2412,6 +2459,11 @@ function EntryDialog({
           p_end_lat: eLabel ? endSpot.lat : null,
           p_end_lng: eLabel ? endSpot.lng : null,
           p_co_rider_ids: coRiderIds,
+          p_start_gps: Boolean(
+            sLabel && startSpot.fromGps && startSpot.lat !== null,
+          ),
+          p_end_gps: Boolean(eLabel && endSpot.fromGps && endSpot.lat !== null),
+          p_unlocked_via_app: Boolean(seed?.fromUnlock),
         });
         if (saved && seed?.fromUnlock) onFinishUnlock();
       } else if (kind === "credit")

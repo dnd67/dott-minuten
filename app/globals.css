@@ -2818,3 +2818,188 @@ tr.voided td {
     border-radius: 1.15rem;
   }
 }
+
+/* Strecken-Bestzeiten & Admin Dev-Dashboard */
+.active-icon-btn {
+  background: var(--tint) !important;
+  color: var(--on-tint) !important;
+  border-color: var(--tint) !important;
+}
+.route-records-list {
+  display: grid;
+  gap: 0.7rem;
+  padding: 0 var(--pad) var(--pad);
+}
+.route-record-card {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 0.9rem;
+  background: var(--inset);
+  border: 1px solid var(--line);
+}
+.route-record-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem 0.8rem;
+  flex-wrap: wrap;
+}
+.route-record-title {
+  display: block;
+  font-size: 0.94rem;
+  color: var(--ink);
+}
+.route-record-head small,
+.route-record-date {
+  display: block;
+  font-size: 0.76rem;
+  color: var(--secondary);
+}
+.record-winner-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  padding: 0.24rem 0.58rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--positive) 16%, transparent);
+  color: var(--positive);
+}
+.route-leaderboard {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.fastest-chip {
+  border-color: color-mix(in srgb, var(--positive) 45%, var(--line)) !important;
+}
+.rank-num {
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  color: var(--secondary);
+}
+.dev-banner {
+  margin-bottom: 1rem;
+}
+.telemetry-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.telemetry-badge.gps {
+  background: color-mix(in srgb, var(--positive) 16%, transparent);
+  color: var(--positive);
+}
+.telemetry-badge.timer {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--ink);
+}
+.telemetry-badge.coord {
+  background: var(--inset);
+  color: var(--ink);
+}
+.telemetry-badge.manual {
+  background: var(--inset);
+  color: var(--secondary);
+}
+.telemetry-badge.none {
+  background: transparent;
+  color: var(--secondary);
+  opacity: 0.75;
+}
+.dev-places-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.6rem;
+  padding: 0 var(--pad) 1rem;
+}
+.dev-place-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.72rem 0.85rem;
+  border-radius: 0.85rem;
+  background: var(--inset);
+  border: 1px solid var(--line);
+}
+.dev-place-card strong {
+  display: block;
+  font-size: 0.9rem;
+}
+.dev-place-card small {
+  display: block;
+  font-size: 0.76rem;
+  color: var(--secondary);
+  overflow-wrap: anywhere;
+}
+.mono-coords {
+  font-family: var(--mono);
+  margin-top: 0.15rem;
+  font-size: 0.72rem !important;
+}
+.dev-place-form {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem var(--pad) var(--pad);
+  border-top: 1px solid var(--line);
+}
+.dev-place-form h3 {
+  margin: 0;
+  font-size: 0.94rem;
+}
+.dev-address-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.55rem;
+  align-items: end;
+}
+.dev-analytics-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  padding: 0 var(--pad) var(--pad);
+}
+.dev-analytics-split h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.6rem;
+  font-size: 0.9rem;
+}
+.dev-compact-list {
+  display: grid;
+  gap: 0.45rem;
+}
+.dev-compact-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  background: var(--inset);
+}
+.dev-compact-row strong {
+  display: block;
+  font-size: 0.86rem;
+}
+.dev-compact-row small {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--secondary);
+}
+@media (max-width: 48rem) {
+  .dev-analytics-split,
+  .dev-address-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

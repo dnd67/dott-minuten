@@ -10,7 +10,12 @@ import {
   wholeMinutes,
 } from "../lib/domain";
 import { demoSnapshot, demoAction } from "../lib/demo";
-import { computeRideInsights, resolvePlaceLabel } from "../lib/location";
+import {
+  computeRideInsights,
+  computeRouteRecords,
+  matchGroupPlace,
+  resolvePlaceLabel,
+} from "../lib/location";
 import { extractInviteToken } from "../lib/accounts";
 import {
   buildLiveRidePayload,
@@ -316,4 +321,86 @@ test("Live-Fahrt-Metriken und iPhone-Kurzbefehl-URL für Dynamic Island werden k
       "shortcuts://run-shortcut?name=Minutenclub%20Live&input=text&text=",
     ),
   );
+});
+
+test("100-m-Crew-Orte werden exakt erkannt und Strecken-Bestzeiten nutzen volle Scooter-Fahrzeit", () => {
+  const places = [
+    {
+      id: "p1",
+      group_id: "g1",
+      label: "Test-Treffpunkt",
+      address: "Bahnhofplatz 1, 8001 Zürich",
+      lat: 47.3779,
+      lng: 8.5403,
+      radius_meters: 100,
+      active: true,
+    },
+  ];
+  // ~45 m entfernt -> Treffer innerhalb 100 m
+  assert.equal(
+    matchGroupPlace(47.3783, 8.5403, places)?.label,
+    "Test-Treffpunkt",
+  );
+  assert.equal(
+    resolvePlaceLabel(47.3783, 8.5403, [], places),
+    "Test-Treffpunkt",
+  );
+  // ~220 m entfernt -> ausserhalb 100 m
+  assert.equal(matchGroupPlace(47.3799, 8.5403, places), null);
+
+  // Strecken-Bestzeiten: geteilte 14-Min.-Fahrt zählt als 14 Min. (nicht 7 Min.!)
+  const base = demoSnapshot();
+  const withShared = demoAction(base, "record_ride", {
+    p_request_id: "speed-shared-1",
+    p_occurred_at: new Date().toISOString(),
+    p_drive_minutes: 14,
+    p_pause_minutes: 0,
+    p_note: "Geteilte Strecke",
+    p_start_label: "Zürich HB",
+    p_start_lat: 47.3779,
+    p_start_lng: 8.5403,
+    p_end_label: "ETH Polyterrasse",
+    p_end_lat: 47.3763,
+    p_end_lng: 8.5476,
+    p_co_rider_ids: ["demo-2"],
+    p_start_gps: true,
+    p_end_gps: true,
+    p_unlocked_via_app: true,
+  });
+  const records = computeRouteRecords(withShared.rides, withShared.members, []);
+  const hbToEth = records.find(
+    (r) => r.startLabel === "Zürich HB" && r.endLabel === "ETH Polyterrasse",
+  );
+  assert.ok(hbToEth);
+  // Geteilte 14-Min.-Fahrt zählt als 840s (14 Min.) volle Scooter-Zeit, NICHT 420s (7 Min.)!
+  assert.equal(hbToEth.fastest.seconds, 14 * 60);
+
+  // Eine schnellere 10-Min.-Solofahrt übernimmt den Streckenrekord:
+  const withFastSolo = demoAction(withShared, "record_ride", {
+    p_request_id: "speed-solo-1",
+    p_occurred_at: new Date().toISOString(),
+    p_drive_minutes: 10,
+    p_pause_minutes: 0,
+    p_note: "Schnelle Fahrt",
+    p_start_label: "Zürich HB",
+    p_start_lat: 47.3779,
+    p_start_lng: 8.5403,
+    p_end_label: "ETH Polyterrasse",
+    p_end_lat: 47.3763,
+    p_end_lng: 8.5476,
+    p_co_rider_ids: [],
+    p_start_gps: true,
+    p_end_gps: true,
+    p_unlocked_via_app: false,
+  });
+  const updated = computeRouteRecords(
+    withFastSolo.rides,
+    withFastSolo.members,
+    [],
+  ).find(
+    (r) => r.startLabel === "Zürich HB" && r.endLabel === "ETH Polyterrasse",
+  );
+  assert.ok(updated);
+  assert.equal(updated.tripCount, 2);
+  assert.equal(updated.fastest.seconds, 10 * 60);
 });

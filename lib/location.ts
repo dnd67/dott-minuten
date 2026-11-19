@@ -1,9 +1,15 @@
-import type { Member, Ride } from "./domain";
+import {
+  groupSharedRides,
+  type GroupPlace,
+  type Member,
+  type Ride,
+} from "./domain";
 
 export type Spot = {
   label: string;
   lat: number | null;
   lng: number | null;
+  fromGps?: boolean;
 };
 
 export type ActiveUnlock = {
@@ -13,6 +19,7 @@ export type ActiveUnlock = {
   startLabel: string;
   startLat: number | null;
   startLng: number | null;
+  startGps?: boolean;
   coRiderIds?: string[];
 };
 
@@ -87,17 +94,60 @@ export function distanceMeters(
 
 const isRawCoordLabel = (label: string) => /^Standort\s*\(/i.test(label.trim());
 
+/** Prüft, ob Koordinaten im konfigurierten Radius (Standard 100 m) eines privaten Crew-Orts liegen. */
+export function matchGroupPlace(
+  lat: number,
+  lng: number,
+  places: GroupPlace[] = [],
+): GroupPlace | null {
+  let best: { place: GroupPlace; dist: number } | null = null;
+  for (const p of places) {
+    if (p.active === false || !validCoords(p.lat, p.lng)) continue;
+    const radius =
+      typeof p.radius_meters === "number" && p.radius_meters > 0
+        ? p.radius_meters
+        : 100;
+    const dist = distanceMeters(lat, lng, p.lat, p.lng);
+    if (dist <= radius && (!best || dist < best.dist)) {
+      best = { place: p, dist };
+    }
+  }
+  return best?.place ?? null;
+}
+
 /**
- * Ordnet Koordinaten rein lokal auf dem Gerät einem Ortsnamen zu:
- * 1. Bereits benannte Gruppenorte im Umkreis von 220 m
- * 2. Bekannte Quartiere/Hubs in Zürich im Umkreis von 650 m
- * 3. Gerundete Koordinaten (~1 km Raster im Text), die direkt überschrieben werden können
+ * Liefert für Statistiken den kanonischen Ortsnamen:
+ * Liegen Koordinaten im 100-m-Umkreis eines gespeicherten Crew-Orts, wird dessen Name verwendet.
+ */
+export function canonicalPlaceLabel(
+  rawLabel: string | undefined,
+  lat: number | null | undefined,
+  lng: number | null | undefined,
+  places: GroupPlace[] = [],
+): string {
+  if (validCoords(lat, lng) && places.length > 0) {
+    const matched = matchGroupPlace(lat, lng!, places);
+    if (matched) return matched.label;
+  }
+  return rawLabel?.trim() ?? "";
+}
+
+/**
+ * Ordnet Koordinaten lokal einem bekannten Ort zu:
+ * 1. Gespeicherte Crew-Orte im konfigurierten Radius (Standard 100 m)
+ * 2. Bereits benannte Gruppenorte im Umkreis von 100 m
+ * 3. Bekannte Quartiere/Hubs in Zürich im Umkreis von 650 m
+ * 4. Fallback bei fehlender Internetverbindung
  */
 export function resolvePlaceLabel(
   lat: number,
   lng: number,
   rides: Ride[] = [],
+  places: GroupPlace[] = [],
 ): string {
+  const crewPlace = matchGroupPlace(lat, lng, places);
+  if (crewPlace) return crewPlace.label;
+
   let bestCrew: { label: string; dist: number } | null = null;
   for (const r of rides) {
     if (r.voided_at) continue;
@@ -114,7 +164,7 @@ export function resolvePlaceLabel(
       if (!label || isRawCoordLabel(label) || !validCoords(cLat, cLng))
         continue;
       const dist = distanceMeters(lat, lng, cLat, cLng!);
-      if (dist <= 220 && (!bestCrew || dist < bestCrew.dist)) {
+      if (dist <= 100 && (!bestCrew || dist < bestCrew.dist)) {
         bestCrew = { label, dist };
       }
     }
@@ -133,11 +183,150 @@ export function resolvePlaceLabel(
   return `Standort (${lat.toFixed(2)}, ${lng.toFixed(2)})`;
 }
 
+/** Enge lokale Trefferprüfung vor dem Reverse-Geocoding (100 m Crew-Orte, 90 m bekannte Hubs). */
+function matchCloseKnownPlace(
+  lat: number,
+  lng: number,
+  rides: Ride[] = [],
+  places: GroupPlace[] = [],
+): string | null {
+  const crewPlace = matchGroupPlace(lat, lng, places);
+  if (crewPlace) return crewPlace.label;
+
+  let bestCrew: { label: string; dist: number } | null = null;
+  for (const r of rides) {
+    if (r.voided_at) continue;
+    const candidates: [
+      string | undefined,
+      number | null | undefined,
+      number | null | undefined,
+    ][] = [
+      [r.end_label, r.end_lat, r.end_lng],
+      [r.start_label, r.start_lat, r.start_lng],
+    ];
+    for (const [raw, cLat, cLng] of candidates) {
+      const label = raw?.trim() ?? "";
+      if (!label || isRawCoordLabel(label) || !validCoords(cLat, cLng))
+        continue;
+      const dist = distanceMeters(lat, lng, cLat, cLng!);
+      if (dist <= 100 && (!bestCrew || dist < bestCrew.dist)) {
+        bestCrew = { label, dist };
+      }
+    }
+  }
+  if (bestCrew) return bestCrew.label;
+
+  let bestHub: { label: string; dist: number } | null = null;
+  for (const hub of ZURICH_HUBS) {
+    const dist = distanceMeters(lat, lng, hub.lat, hub.lng);
+    if (dist <= 90 && (!bestHub || dist < bestHub.dist)) {
+      bestHub = { label: hub.label, dist };
+    }
+  }
+  return bestHub?.label ?? null;
+}
+
+/**
+ * Löst Schweizer Koordinaten über das amtliche Gebäuderegister von swisstopo
+ * (api3.geo.admin.ch, Schweizer Bund) in eine echte Strassenadresse auf (z. B. «Bahnhofstrasse 42, 8001 Zürich»).
+ */
+export async function reverseGeocodeSwissAddress(
+  lat: number,
+  lng: number,
+): Promise<string | null> {
+  if (typeof fetch !== "function") return null;
+  try {
+    for (const [delta, tolerance] of [
+      [0.001, 45],
+      [0.003, 120],
+    ] as const) {
+      const extent = `${lng - delta},${lat - delta},${lng + delta},${lat + delta}`;
+      const url = `https://api3.geo.admin.ch/rest/services/api/MapServer/identify?geometryType=esriGeometryPoint&geometry=${lng},${lat}&sr=4326&layers=all:ch.swisstopo.amtliches-gebaeudeadressverzeichnis&tolerance=${tolerance}&mapExtent=${extent}&imageDisplay=500,500,96&returnGeometry=true&limit=25`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3500);
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        if (!res.ok) continue;
+        const data = (await res.json()) as {
+          results?: {
+            attributes?: {
+              stn_label?: string;
+              adr_number?: string;
+              zip_label?: string;
+            };
+            geometry?: { x?: number; y?: number };
+          }[];
+        };
+        const candidates = (data.results ?? [])
+          .map((item) => {
+            const a = item.attributes;
+            const g = item.geometry;
+            const street = [a?.stn_label?.trim(), a?.adr_number?.trim()]
+              .filter(Boolean)
+              .join(" ");
+            if (!street) return null;
+            const zip = a?.zip_label?.trim();
+            const label = zip ? `${street}, ${zip}` : street;
+            const dist =
+              typeof g?.y === "number" && typeof g?.x === "number"
+                ? distanceMeters(lat, lng, g.y, g.x)
+                : 9999;
+            return { label, dist };
+          })
+          .filter((x): x is { label: string; dist: number } => Boolean(x))
+          .sort((a, b) => a.dist - b.dist);
+        if (candidates.length > 0) return candidates[0].label;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+  } catch {
+    /* Offline oder Timeout -> sauberer lokaler Fallback */
+  }
+  return null;
+}
+
+/** Sucht eine Schweizer Strassenadresse über swisstopo und liefert exakte Koordinaten für neue Crew-Orte. */
+export async function searchSwissAddress(
+  query: string,
+): Promise<{ label: string; lat: number; lng: number } | null> {
+  const clean = query.trim();
+  if (!clean || typeof fetch !== "function") return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    const url = `https://api3.geo.admin.ch/rest/services/api/SearchServer?searchText=${encodeURIComponent(clean)}&type=locations&origins=address&sr=4326&limit=1`;
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      results?: {
+        attrs?: { label?: string; lat?: number; lon?: number };
+      }[];
+    };
+    const hit = data.results?.[0]?.attrs;
+    if (!hit || !validCoords(hit.lat, hit.lon)) return null;
+    return {
+      label: String(hit.label ?? clean)
+        .replace(/<[^>]+>/g, "")
+        .trim(),
+      lat: Math.round(hit.lat * 100000) / 100000,
+      lng: Math.round(hit.lon! * 100000) / 100000,
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Fragt den Gerätestandort EINMALIG bei aktiver Benutzeraktion ab (getCurrentPosition).
  * Es wird niemals watchPosition oder Hintergrund-Ortung verwendet.
  */
-export function requestCurrentSpot(rides: Ride[] = []): Promise<Spot> {
+export function requestCurrentSpot(
+  rides: Ride[] = [],
+  places: GroupPlace[] = [],
+): Promise<Spot> {
   return new Promise((resolve, reject) => {
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
       reject(
@@ -148,13 +337,22 @@ export function requestCurrentSpot(rides: Ride[] = []): Promise<Spot> {
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = roundCoord(pos.coords.latitude);
-        const lng = roundCoord(pos.coords.longitude);
+      async (pos) => {
+        const rawLat = pos.coords.latitude;
+        const rawLng = pos.coords.longitude;
+        const lat = roundCoord(rawLat);
+        const lng = roundCoord(rawLng);
+        const closeMatch = matchCloseKnownPlace(rawLat, rawLng, rides, places);
+        if (closeMatch) {
+          resolve({ label: closeMatch, lat, lng, fromGps: true });
+          return;
+        }
+        const address = await reverseGeocodeSwissAddress(rawLat, rawLng);
         resolve({
-          label: resolvePlaceLabel(lat, lng, rides),
+          label: address ?? resolvePlaceLabel(rawLat, rawLng, rides, places),
           lat,
           lng,
+          fromGps: true,
         });
       },
       (err) => {
@@ -187,7 +385,11 @@ export function requestCurrentSpot(rides: Ride[] = []): Promise<Spot> {
   });
 }
 
-export function knownPlaceSuggestions(rides: Ride[], limit = 6): Spot[] {
+export function knownPlaceSuggestions(
+  rides: Ride[],
+  limit = 6,
+  places: GroupPlace[] = [],
+): Spot[] {
   const counts = new Map<string, { spot: Spot; count: number }>();
   for (const r of rides) {
     if (r.voided_at) continue;
@@ -200,7 +402,7 @@ export function knownPlaceSuggestions(rides: Ride[], limit = 6): Spot[] {
       [r.start_label, r.start_lat, r.start_lng],
     ];
     for (const [raw, lat, lng] of pairs) {
-      const label = raw?.trim() ?? "";
+      const label = canonicalPlaceLabel(raw, lat, lng, places);
       if (!label) continue;
       const key = label.toLocaleLowerCase("de-CH");
       const existing = counts.get(key);
@@ -228,8 +430,20 @@ export function knownPlaceSuggestions(rides: Ride[], limit = 6): Spot[] {
   const sorted = [...counts.values()]
     .sort((a, b) => b.count - a.count)
     .map((x) => x.spot);
-  if (sorted.length >= limit) return sorted.slice(0, limit);
   const seen = new Set(sorted.map((s) => s.label.toLocaleLowerCase("de-CH")));
+  for (const p of places) {
+    if (p.active === false) continue;
+    const key = p.label.toLocaleLowerCase("de-CH");
+    if (!seen.has(key)) {
+      seen.add(key);
+      sorted.push({
+        label: p.label,
+        lat: roundCoord(p.lat),
+        lng: roundCoord(p.lng),
+      });
+    }
+  }
+  if (sorted.length >= limit) return sorted.slice(0, limit);
   for (const hub of ZURICH_HUBS) {
     if (sorted.length >= limit) break;
     const key = hub.label.toLocaleLowerCase("de-CH");
@@ -341,7 +555,171 @@ export type MemberLocationProfile = {
   peakHourLabel: string | null;
 };
 
-export function computeRideInsights(rides: Ride[], members: Member[]) {
+export type RouteRecordRider = {
+  memberId: string;
+  name: string;
+  bestSeconds: number;
+  avgSeconds: number;
+  count: number;
+};
+
+export type RouteRecordStat = {
+  key: string;
+  startLabel: string;
+  endLabel: string;
+  tripCount: number;
+  avgSeconds: number;
+  fastest: {
+    seconds: number;
+    memberIds: string[];
+    memberNames: string;
+    occurredAt: string;
+    shared: boolean;
+  };
+  leaderboard: RouteRecordRider[];
+};
+
+/**
+ * Berechnet Bestzeiten pro Strecke (Start → Ziel) über alle aktiven Fahrten.
+ * Geteilte Fahrten werden zuerst zusammengeführt, damit die echte Scooter-Fahrzeit gezählt wird.
+ */
+export function computeRouteRecords(
+  rides: Ride[],
+  members: Member[],
+  places: GroupPlace[] = [],
+): RouteRecordStat[] {
+  const activeRides = rides.filter((r) => !r.voided_at);
+  const memberMap = new Map(members.map((m) => [m.id, m]));
+  const trips = groupSharedRides(activeRides);
+
+  const routeMap = new Map<
+    string,
+    {
+      startLabel: string;
+      endLabel: string;
+      tripCount: number;
+      totalSeconds: number;
+      fastest: RouteRecordStat["fastest"];
+      riders: Map<
+        string,
+        { bestSeconds: number; totalSeconds: number; count: number }
+      >;
+    }
+  >();
+
+  for (const trip of trips) {
+    const startLabel = canonicalPlaceLabel(
+      trip.ride.start_label,
+      trip.ride.start_lat,
+      trip.ride.start_lng,
+      places,
+    );
+    const endLabel = canonicalPlaceLabel(
+      trip.ride.end_label,
+      trip.ride.end_lat,
+      trip.ride.end_lng,
+      places,
+    );
+    if (!startLabel || !endLabel) continue;
+
+    // Reine Fahrzeit, falls > 0; sonst belastete Gesamtzeit (bei reiner Pausenfahrt).
+    const tripSec =
+      trip.duration_seconds > 0 ? trip.duration_seconds : trip.charged_seconds;
+    if (tripSec <= 0) continue;
+
+    const key = `${startLabel.toLocaleLowerCase("de-CH")}→${endLabel.toLocaleLowerCase("de-CH")}`;
+    const memberIds = trip.parts.map((p) => p.member_id);
+    const memberNames = memberIds
+      .map((id) => memberMap.get(id)?.display_name ?? "Mitglied")
+      .join(" & ");
+
+    let entry = routeMap.get(key);
+    if (!entry) {
+      entry = {
+        startLabel,
+        endLabel,
+        tripCount: 0,
+        totalSeconds: 0,
+        fastest: {
+          seconds: tripSec,
+          memberIds,
+          memberNames,
+          occurredAt: trip.ride.occurred_at,
+          shared: trip.parts.length > 1,
+        },
+        riders: new Map(),
+      };
+      routeMap.set(key, entry);
+    }
+
+    entry.tripCount++;
+    entry.totalSeconds += tripSec;
+    if (
+      tripSec < entry.fastest.seconds ||
+      (tripSec === entry.fastest.seconds &&
+        trip.ride.occurred_at > entry.fastest.occurredAt)
+    ) {
+      entry.fastest = {
+        seconds: tripSec,
+        memberIds,
+        memberNames,
+        occurredAt: trip.ride.occurred_at,
+        shared: trip.parts.length > 1,
+      };
+    }
+
+    for (const mid of memberIds) {
+      const prev = entry.riders.get(mid);
+      if (prev) {
+        prev.bestSeconds = Math.min(prev.bestSeconds, tripSec);
+        prev.totalSeconds += tripSec;
+        prev.count++;
+      } else {
+        entry.riders.set(mid, {
+          bestSeconds: tripSec,
+          totalSeconds: tripSec,
+          count: 1,
+        });
+      }
+    }
+  }
+
+  return [...routeMap.entries()]
+    .map(([key, r]) => ({
+      key,
+      startLabel: r.startLabel,
+      endLabel: r.endLabel,
+      tripCount: r.tripCount,
+      avgSeconds: Math.round(r.totalSeconds / r.tripCount),
+      fastest: r.fastest,
+      leaderboard: [...r.riders.entries()]
+        .map(([memberId, stat]) => ({
+          memberId,
+          name: memberMap.get(memberId)?.display_name ?? "Mitglied",
+          bestSeconds: stat.bestSeconds,
+          avgSeconds: Math.round(stat.totalSeconds / stat.count),
+          count: stat.count,
+        }))
+        .sort(
+          (a, b) =>
+            a.bestSeconds - b.bestSeconds ||
+            b.count - a.count ||
+            a.name.localeCompare(b.name, "de-CH"),
+        ),
+    }))
+    .sort(
+      (a, b) =>
+        b.tripCount - a.tripCount ||
+        a.fastest.seconds - b.fastest.seconds ||
+        a.startLabel.localeCompare(b.startLabel, "de-CH"),
+    );
+}
+
+export function computeRideInsights(
+  rides: Ride[],
+  members: Member[],
+  places: GroupPlace[] = [],
+) {
   const activeRides = rides.filter((r) => !r.voided_at);
   const memberMap = new Map(members.map((m) => [m.id, m]));
 
@@ -384,8 +762,18 @@ export function computeRideInsights(rides: Ride[], members: Member[]) {
     if (isNewTrip) part.count++;
     part.seconds += r.charged_seconds;
 
-    const endLabel = r.end_label?.trim() ?? "";
-    const startLabel = r.start_label?.trim() ?? "";
+    const endLabel = canonicalPlaceLabel(
+      r.end_label,
+      r.end_lat,
+      r.end_lng,
+      places,
+    );
+    const startLabel = canonicalPlaceLabel(
+      r.start_label,
+      r.start_lat,
+      r.start_lng,
+      places,
+    );
     if (endLabel || startLabel) seenLocatedTrips.add(tripKey);
 
     if (endLabel) {
@@ -481,8 +869,18 @@ export function computeRideInsights(rides: Ride[], members: Member[]) {
       hours[h]++;
       const pId = dayPartForHour(h);
       parts.set(pId, (parts.get(pId) ?? 0) + 1);
-      const end = r.end_label?.trim() ?? "";
-      const start = r.start_label?.trim() ?? "";
+      const end = canonicalPlaceLabel(
+        r.end_label,
+        r.end_lat,
+        r.end_lng,
+        places,
+      );
+      const start = canonicalPlaceLabel(
+        r.start_label,
+        r.start_lat,
+        r.start_lng,
+        places,
+      );
       if (end || start) locatedRides++;
       if (end) {
         const key = end.toLocaleLowerCase("de-CH");
@@ -521,5 +919,6 @@ export function computeRideInsights(rides: Ride[], members: Member[]) {
     peakHour: peakHour ? hourWindowLabel(peakHour.hour) : null,
     destinations,
     memberProfiles,
+    routeRecords: computeRouteRecords(activeRides, members, places),
   };
 }

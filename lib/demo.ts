@@ -208,6 +208,9 @@ export function demoSnapshot(): Snapshot {
       end_label: endLabel,
       end_lat: endLat,
       end_lng: endLng,
+      start_gps: i % 2 === 0,
+      end_gps: i % 3 !== 2,
+      unlocked_via_app: i % 2 === 0,
     }),
   );
   return {
@@ -287,6 +290,41 @@ export function demoSnapshot(): Snapshot {
         resolved_by_member_id: null,
       },
     ],
+    places: [
+      {
+        id: "demo-place-1",
+        group_id: gid,
+        label: "Zürich HB",
+        address: "Bahnhofplatz 1, 8001 Zürich",
+        lat: 47.3779,
+        lng: 8.5403,
+        radius_meters: 100,
+        active: true,
+        created_at: ago(15),
+      },
+      {
+        id: "demo-place-2",
+        group_id: gid,
+        label: "ETH Polyterrasse",
+        address: "Rämistrasse 101, 8092 Zürich",
+        lat: 47.3763,
+        lng: 8.5476,
+        radius_meters: 100,
+        active: true,
+        created_at: ago(15),
+      },
+      {
+        id: "demo-place-3",
+        group_id: gid,
+        label: "Bellevue",
+        address: "Bellevueplatz, 8001 Zürich",
+        lat: 47.367,
+        lng: 8.5451,
+        radius_meters: 100,
+        active: true,
+        created_at: ago(15),
+      },
+    ],
   };
 }
 
@@ -349,6 +387,9 @@ export function demoAction(
         end_lng: validCoords(eLat, eLng) ? roundCoord(eLng!) : null,
         shared_group_id: sharedGroupId,
         shared_rider_count: shares.length,
+        start_gps: Boolean(args.p_start_gps) && validCoords(sLat, sLng),
+        end_gps: Boolean(args.p_end_gps) && validCoords(eLat, eLng),
+        unlocked_via_app: Boolean(args.p_unlocked_via_app),
       });
       data.entries.push({
         id: crypto.randomUUID(),
@@ -502,6 +543,33 @@ export function demoAction(
       req.resolved_at = now;
       req.resolved_by_member_id = "demo-0";
     }
+  } else if (action === "upsert_group_place") {
+    data.places ??= [];
+    if (data.places.some((p) => p.id === id)) return data;
+    const label = String(args.p_label ?? "").trim();
+    const address = String(args.p_address ?? "").trim();
+    const lat = Number(args.p_lat);
+    const lng = Number(args.p_lng);
+    const radius = Number(args.p_radius_meters ?? 100);
+    if (!label || label.length > 80)
+      throw new Error("Bitte einen Ortsnamen mit 1 bis 80 Zeichen eingeben.");
+    if (!validCoords(lat, lng))
+      throw new Error("Bitte gültige Koordinaten angeben.");
+    if (!Number.isFinite(radius) || radius < 20 || radius > 1000)
+      throw new Error("Der Radius muss zwischen 20 und 1000 Metern liegen.");
+    data.places.push({
+      id,
+      group_id: gid,
+      label,
+      address,
+      lat: Math.round(lat * 100000) / 100000,
+      lng: Math.round(lng * 100000) / 100000,
+      radius_meters: Math.round(radius),
+      active: true,
+      created_at: now,
+    });
+  } else if (action === "deactivate_group_place") {
+    data.places = (data.places ?? []).filter((p) => p.id !== args.p_place_id);
   }
   return data;
 }

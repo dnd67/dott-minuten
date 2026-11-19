@@ -1,13 +1,20 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Clock3, Compass, MapPin, ShieldCheck } from "lucide-react";
-import { minutes, type Member, type Ride } from "@/lib/domain";
+import { Clock3, Compass, MapPin, ShieldCheck, Trophy } from "lucide-react";
+import {
+  dateLabel,
+  minutes,
+  type GroupPlace,
+  type Member,
+  type Ride,
+} from "@/lib/domain";
 import { computeRideInsights } from "@/lib/location";
 
 type Props = {
   rides: Ride[];
   members: Member[];
+  places?: GroupPlace[];
   personFilter: string;
   renderAvatar: (member: Member | undefined, size?: string) => ReactNode;
 };
@@ -15,13 +22,14 @@ type Props = {
 export function LocationStats({
   rides,
   members,
+  places = [],
   personFilter,
   renderAvatar,
 }: Props) {
   const shownMembers = members.filter(
     (m) => personFilter === "all" || m.id === personFilter,
   );
-  const insights = computeRideInsights(rides, shownMembers);
+  const insights = computeRideInsights(rides, shownMembers, places);
   const maxHourCount = Math.max(1, ...insights.hourly.map((h) => h.count));
   const maxDestCount = Math.max(
     1,
@@ -174,6 +182,82 @@ export function LocationStats({
                     );
                   })}
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="panel">
+        <div className="panel-heading">
+          <div>
+            <h2>Strecken-Bestzeiten · Wer ist am schnellsten?</h2>
+            <p>
+              Vergleich der schnellsten Fahrzeiten pro Strecke (Start → Ziel).
+              Bei geteilten Fahrten zählt die volle Scooter-Fahrzeit.
+            </p>
+          </div>
+          <span className="subtle-pill">
+            <Trophy size={13} /> Rekorde
+          </span>
+        </div>
+
+        {insights.routeRecords.length === 0 ? (
+          <div className="empty">
+            <span className="empty-icon">
+              <Trophy size={23} />
+            </span>
+            <h3>Noch keine kompletten Strecken</h3>
+            <p>
+              Sobald Fahrten sowohl einen Start- als auch einen Zielort haben,
+              erscheint hier die Bestzeiten-Rangliste.
+            </p>
+          </div>
+        ) : (
+          <div className="route-records-list">
+            {insights.routeRecords.map((route) => (
+              <div className="route-record-card" key={route.key}>
+                <div className="route-record-head">
+                  <div>
+                    <strong className="route-record-title">
+                      {route.startLabel} → {route.endLabel}
+                    </strong>
+                    <small>
+                      {route.tripCount}{" "}
+                      {route.tripCount === 1 ? "Fahrt" : "Fahrten"} · Ø{" "}
+                      {minutes(route.avgSeconds)} Min.
+                    </small>
+                  </div>
+                  <span className="record-winner-pill">
+                    <Trophy size={14} /> {route.fastest.memberNames} ·{" "}
+                    {minutes(route.fastest.seconds)} Min.
+                  </span>
+                </div>
+                <div className="route-leaderboard">
+                  {route.leaderboard.map((entry, idx) => {
+                    const m = members.find((x) => x.id === entry.memberId);
+                    return (
+                      <span
+                        className={`rider-chip ${idx === 0 ? "fastest-chip" : ""}`}
+                        key={entry.memberId}
+                        title={`Bestzeit ${minutes(entry.bestSeconds)} Min. · Durchschnitt ${minutes(entry.avgSeconds)} Min. (${entry.count}×)`}
+                      >
+                        <strong className="rank-num">#{idx + 1}</strong>
+                        {renderAvatar(m, "tiny")}
+                        <span>
+                          {entry.name}{" "}
+                          <strong>{minutes(entry.bestSeconds)} Min.</strong>{" "}
+                          <small>({entry.count}×)</small>
+                        </span>
+                      </span>
+                    );
+                  })}
+                </div>
+                <small className="route-record-date">
+                  Streckenrekord aufgestellt am{" "}
+                  {dateLabel(route.fastest.occurredAt, true)}
+                  {route.fastest.shared ? " (geteilte Fahrt)" : ""}
+                </small>
               </div>
             ))}
           </div>

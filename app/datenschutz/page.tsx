@@ -199,15 +199,16 @@ export default function LegalPage() {
               </li>
               <li>
                 <strong>
-                  Automatische Vergröberung &amp; kein Karten-Tracking:
+                  Automatische Vergröberung &amp; Schweizer Adressauflösung:
                 </strong>{" "}
                 Erfasste Koordinaten werden vor dem Speichern auf{" "}
                 <strong>4 Dezimalstellen (ca. 11 Meter)</strong> gerundet.
-                Bekannte Ortsbezeichnungen (z. B. Bahnhöfe oder Treffpunkte)
-                werden direkt auf deinem Gerät im Browser berechnet – deine
-                GPS-Koordinaten werden an <strong>keinen</strong> externen
-                Kartendienst (weder Google Maps noch Apple Maps oder
-                Geocoding-APIs) übertragen.
+                Bekannte Crew-Orte (im 100-m-Umkreis) werden lokal zugeordnet;
+                für übrige Strassenadressen erfolgt ausschliesslich im Moment
+                deines Standort-Tipps eine Abfrage an das amtliche
+                Gebäuderegister des Bundesamts für Landestopografie{" "}
+                <strong>swisstopo (geo.admin.ch, Schweiz)</strong> – ohne
+                Werbe-Tracking und ohne Google/Apple Maps.
               </li>
               <li>
                 <strong>Jederzeit optional &amp; widerrufbar:</strong> Jede

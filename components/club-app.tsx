@@ -222,6 +222,7 @@ export function ClubApp() {
       "package_contributions",
       "feedback",
       "password_reset_requests",
+      "group_places",
     ]) {
       channel.on(
         "postgres_changes",

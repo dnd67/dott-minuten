@@ -963,6 +963,68 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
       assert.equal(await balBefore(friendMember), friendBefore);
     },
   );
+  await t.test(
+    "Dev-Telemetrie (GPS/Entsperr-Timer) und RLS-geschützte Crew-Orte (100 m) funktionieren nach Rolle",
+    async () => {
+      const placeId = randomUUID();
+      await assert.rejects(
+        () =>
+          as(
+            friend,
+            "select public.upsert_group_place($1,$2,'Test-Ort','Bahnhofplatz 1',47.3779,8.5403,100)",
+            [gid, placeId],
+          ),
+        /Keine Berechtigung/,
+      );
+
+      await as(
+        owner,
+        "select public.upsert_group_place($1,$2,'Test-Ort','Bahnhofplatz 1',47.3779,8.5403,100)",
+        [gid, placeId],
+      );
+      const [dashWithPlace] = await as<{
+        value: {
+          places: { id: string; label: string; radius_meters: number }[];
+        };
+      }>(friend, "select public.get_dashboard($1) as value", [gid]);
+      assert.equal(dashWithPlace.value.places.length, 1);
+      assert.equal(dashWithPlace.value.places[0].label, "Test-Ort");
+      assert.equal(dashWithPlace.value.places[0].radius_meters, 100);
+
+      // 16-Param record_ride speichert GPS- & App-Entsperr-Telemetrie:
+      const teleRideId = randomUUID();
+      await as(
+        friend,
+        "select public.record_ride($1,$2,$3,8,0,'GPS-Test','Test-Ort',47.3779,8.5403,'Bellevue',47.367,8.5451,$4::uuid[],true,true,true)",
+        [gid, teleRideId, "2026-01-05T10:00:00Z", []],
+      );
+      const [tele] = await as<{
+        start_gps: boolean;
+        end_gps: boolean;
+        unlocked_via_app: boolean;
+      }>(
+        owner,
+        "select start_gps, end_gps, unlocked_via_app from public.rides where id=$1",
+        [teleRideId],
+      );
+      assert.equal(tele.start_gps, true);
+      assert.equal(tele.end_gps, true);
+      assert.equal(tele.unlocked_via_app, true);
+
+      // Admin kann Ort wieder deaktivieren:
+      await as(owner, "select public.deactivate_group_place($1,$2,$3)", [
+        gid,
+        randomUUID(),
+        placeId,
+      ]);
+      const [dashAfterDeact] = await as<{ value: { places: unknown[] } }>(
+        owner,
+        "select public.get_dashboard($1) as value",
+        [gid],
+      );
+      assert.equal(dashAfterDeact.value.places.length, 0);
+    },
+  );
   await db.close();
 });
 

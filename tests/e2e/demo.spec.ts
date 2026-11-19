@@ -538,3 +538,44 @@ test("Gemeinsame Fahrt auf dem gleichen Scooter während aktiver Fahrt auswähle
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
 });
+
+test("Admin Dev-Dashboard (GPS-Telemetrie, 100-m-Crew-Orte) und Strecken-Bestzeiten auf iPhone-Breite", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/?demo=1");
+
+  // 1. Strecken-Bestzeiten in Statistik prüfen
+  await page
+    .locator(".mobile-nav")
+    .getByRole("button", { name: "Statistik", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Strecken-Bestzeiten · Wer ist am schnellsten?",
+    }),
+  ).toBeVisible();
+  await expect(page.locator(".route-record-card").first()).toBeVisible();
+
+  // 2. Admin Dev-Dashboard über Topbar öffnen
+  await page.getByRole("button", { name: "Dev-Dashboard öffnen" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Fahrt-Telemetrie & GPS-Inspektor" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Crew-Orte & 100-m-Adresszonen" }),
+  ).toBeVisible();
+
+  // 3. Neuen Crew-Ort mit Koordinaten anlegen
+  await page.getByLabel("Name in Statistik").fill("Limmat-Spot");
+  await page.getByLabel("Breitengrad (Lat)").fill("47.372");
+  await page.getByLabel("Längengrad (Lng)").fill("8.541");
+  await page.getByRole("button", { name: "Crew-Ort speichern" }).click();
+  await expect(
+    page.locator(".dev-place-card").filter({ hasText: "Limmat-Spot" }),
+  ).toBeVisible();
+
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+});

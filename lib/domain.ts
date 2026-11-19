@@ -29,6 +29,9 @@ export type Ride = {
   end_lng?: number | null;
   shared_group_id?: string | null;
   shared_rider_count?: number;
+  start_gps?: boolean;
+  end_gps?: boolean;
+  unlocked_via_app?: boolean;
 };
 export type Entry = {
   id: string;
@@ -85,6 +88,17 @@ export type PasswordResetRequest = {
   resolved_at: string | null;
   resolved_by_member_id?: string | null;
 };
+export type GroupPlace = {
+  id: string;
+  group_id: string;
+  label: string;
+  address: string;
+  lat: number;
+  lng: number;
+  radius_meters: number;
+  active?: boolean;
+  created_at?: string;
+};
 export type Snapshot = {
   group: Group;
   members: Member[];
@@ -95,6 +109,7 @@ export type Snapshot = {
   feedback?: FeedbackItem[];
   accounts?: UserAccount[];
   reset_requests?: PasswordResetRequest[];
+  places?: GroupPlace[];
 };
 export type Action =
   | "record_ride"
@@ -107,7 +122,9 @@ export type Action =
   | "create_invite"
   | "revoke_invites"
   | "submit_feedback"
-  | "dismiss_password_reset";
+  | "dismiss_password_reset"
+  | "upsert_group_place"
+  | "deactivate_group_place";
 export type RpcArgs = Record<
   string,
   string | number | boolean | null | string[] | TopupPlan
