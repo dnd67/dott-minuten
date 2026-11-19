@@ -78,4 +78,12 @@ Die Datenbanktests führen dieselben SQL-Migrationen in PostgreSQL via PGlite au
 
 Screenshot-Upload und DeepSeek-Erkennung sind **noch nicht aktiviert**. `lib/recognition.ts` definiert die Schnittstelle; es gibt keine OCR-Aufrufe, keinen Bildspeicher und keine dafür benötigten API-Schlüssel in Version 1. Weitere geplante Erweiterungen: CSV-Export, Monatsabschluss, Guthabenübertragungen, Paketkorrekturen und Verfall. Konkrete Erkennungsregeln stehen in der [OCR-Planung](docs/screenshot-recognition.md).
 
-Keine echten Fahrtbilder, Umgebungsdateien oder Zugangsdaten ins öffentliche Repository einchecken.
+## Private Daten bei der Entwicklung
+
+Speichere lokale Zugangsdaten in `.env.local` und echte Fahrtbilder oder Datenexporte im Ordner `private/` ausserhalb von `public/`. Git ignoriert diese Pfade. Die Datei `.env.example` enthält öffentliche Platzhalter. Alles unter `public/` kann die Webseite ausliefern.
+
+Prüfe vor einem Commit mit `git diff --cached`, was veröffentlicht wird. Git berücksichtigt auch Änderungen an bereits versionierten Dateien. Falls ein geheimer Schlüssel veröffentlicht wurde, widerrufe ihn beim Anbieter und ersetze ihn.
+
+## Lizenz
+
+Minutenclub ist Open Source. Die MIT-Lizenz erlaubt die Nutzung, Änderung und Weitergabe des Codes unter Beibehaltung des Lizenz- und Urheberrechtshinweises. [Lizenztext](LICENSE)

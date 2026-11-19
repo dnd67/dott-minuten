@@ -1,28 +1,79 @@
-# Lokale Geheimnisse und Umgebungsdateien
+# Umgebungsdateien und lokale Zugangsdaten
 .env
 .env.*
-!.env.example
+.envrc
+.envrc.local
+.env~
+!/.env.example
+secrets/
+.secrets/
+.credentials/
+credentials.json
+service-account*.json
+.npmrc
+.netrc
+_netrc
+.pgpass
+pgpass.conf
+.pg_service.conf
+.git-credentials
+.ssh/
+id_rsa
+id_ed25519
 *.pem
 *.key
+*.p12
+*.pfx
+*.jks
+*.keystore
 
-# Private Fahrtbilder, Exporte und lokale Testdaten
-/private/
-/screenshots/
-/uploads/
-/backups/
+# Lokale Verbindungen zu Hosting und Datenbank
+.vercel/
+.supabase/
+supabase/.temp/
+supabase/.branches/
+
+# Private Fahrtdaten, Bilder, Exporte und Datenbanksicherungen
+private/
+screenshots/
+uploads/
+exports/
+backups/
+*.csv
 *.dump
+*.backup
+*.sql.gz
+*.sql.zip
+*.sql.zst
+*.sql
+!/supabase/migrations/**/*.sql
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite*-wal
+*.sqlite*-shm
+*.db-wal
+*.db-shm
+IMG_*.PNG
+IMG_*.png
+IMG_*.HEIC
+IMG_*.heic
+IMG_*.JPG
+IMG_*.jpg
 
-# Entwicklungsartefakte für die spätere App
+# Entwicklungsartefakte und lokale Browser-Sitzungen
 node_modules/
 .next/
-.vercel/
 coverage/
 *.log
 .DS_Store
-
-# TypeScript und lokale Browser-Tests
 *.tsbuildinfo
 /playwright-report/
 /test-results/
+/playwright/.auth/
+storageState.json
+storage-state.json
+*.har.zip
+*.har
 # Wird von Next.js bei dev/build erzeugt
 next-env.d.ts
