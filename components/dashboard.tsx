@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowDownLeft,
   ArrowRight,
@@ -1294,7 +1294,7 @@ function EntryDialog({
         e instanceof Error ? e.message : "Bitte Eingaben prüfen.";
     }
   }
-  useEffect(() => {
+  useLayoutEffect(() => {
     dialog.current?.showModal();
     first.current?.focus();
     const node = dialog.current;

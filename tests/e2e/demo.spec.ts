@@ -7,7 +7,11 @@ test("Demo: Fahrt, Guthaben, Paket, Storno, Filter und Einladung", async ({
   await page.goto("/");
   await page.getByRole("button", { name: "Demo ausprobieren" }).click();
   await expect(page.getByRole("heading", { name: "Hoi Oskar" })).toBeVisible();
-  await page.getByRole("button", { name: "Fahrt eintragen" }).click();
+  const addRide = page.getByRole("button", { name: "Fahrt eintragen" });
+  await addRide.click();
+  await page.keyboard.press("Escape");
+  await expect(addRide).toBeFocused();
+  await addRide.click();
   await page.getByLabel("Fahrzeit (Minuten)").fill("14");
   await page.getByLabel("Pause (Minuten)").fill("1");
   await expect(page.locator(".sum-line")).toContainText("15 Min.");
