@@ -749,6 +749,75 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
       assert.equal(afterDismiss.value.reset_requests[0].status, "dismissed");
     },
   );
+  await t.test(
+    "Rate-Limit, Invite-Only-Status und Einladungs-Sperre schützen vor Missbrauch",
+    async () => {
+      // Sobald ein Club existiert, verlangt die Registrierung zwingend eine Einladung:
+      const [reqInv] = await as<{ required: boolean }>(
+        friend,
+        "select public.registration_requires_invite() as required",
+      );
+      assert.equal(reqInv.required, true);
+
+      // Normale Clients (authenticated / anon) dürfen check_public_rate_limit NICHT direkt aufrufen:
+      await assert.rejects(
+        () =>
+          as(
+            friend,
+            "select public.check_public_rate_limit('ip:test', 5, 600)",
+          ),
+        /permission denied/,
+      );
+      await db.exec("reset role; set role anon;");
+      await assert.rejects(
+        () =>
+          db.query("select public.check_public_rate_limit('ip:test', 5, 600)"),
+        /permission denied/,
+      );
+
+      // Backend (service_role / postgres) begrenzt zuverlässig nach p_limit Treffern:
+      await db.exec("reset role");
+      for (let i = 1; i <= 5; i++) {
+        const { rows } = await db.query<{ ok: boolean }>(
+          "select public.check_public_rate_limit('ip:register:abc', 5, 600) as ok",
+        );
+        assert.equal(rows[0].ok, true);
+      }
+      const { rows: blocked } = await db.query<{ ok: boolean }>(
+        "select public.check_public_rate_limit('ip:register:abc', 5, 600) as ok",
+      );
+      assert.equal(blocked[0].ok, false);
+
+      // Admin kann offene Einladungslinks sofort sperren; Nicht-Admins werden abgewiesen:
+      const [{ freshToken }] = await as<{ freshToken: string }>(
+        owner,
+        'select public.create_invite($1,$2) as "freshToken"',
+        [gid, randomUUID()],
+      );
+      await assert.rejects(
+        () =>
+          as(friend, "select public.revoke_invites($1,$2)", [
+            gid,
+            randomUUID(),
+          ]),
+        /Keine Berechtigung/,
+      );
+      const [{ count }] = await as<{ count: number }>(
+        owner,
+        "select public.revoke_invites($1,$2) as count",
+        [gid, randomUUID()],
+      );
+      assert.ok(Number(count) >= 1);
+
+      const lateUser = randomUUID();
+      await db.exec("reset role");
+      await db.query("insert into auth.users values($1)", [lateUser]);
+      await assert.rejects(
+        () => as(lateUser, "select public.join_group($1,'Spät')", [freshToken]),
+        /ungültig oder abgelaufen/,
+      );
+    },
+  );
   await db.close();
 });
 

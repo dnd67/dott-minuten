@@ -537,6 +537,12 @@ textarea::placeholder {
 .panel-heading > div {
   min-width: 0;
 }
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
 .subtle-pill,
 .pill {
   display: inline-block;

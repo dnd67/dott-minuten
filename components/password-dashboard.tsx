@@ -56,7 +56,6 @@ type Props = {
 };
 
 export function PasswordDashboard({
-  me,
   ownUsername,
   admin,
   members,

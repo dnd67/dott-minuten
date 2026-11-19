@@ -93,7 +93,7 @@ Es gibt keine zusätzlichen Vercel-Server-Secrets oder OCR-API-Schlüssel. Die k
 5. Ein Admin wählt **Guthaben → Guthaben aufladen**, trägt Paketminuten, Gesamtpreis und den CHF-Beitrag jedes Mitglieds ein. Die Vorschau zeigt die Minutenanteile. Die Summe der Beiträge muss genau dem Paketpreis entsprechen. Mit **Speichern** werden Kauf, Beiträge und Minutengutschriften gemeinsam gespeichert; keine zusätzliche Gutschrift derselben Minuten vornehmen. **Minuten manuell geben** bleibt als kostenlose interne Gutschrift ohne neuen Paketkauf verfügbar.
 6. Jede Person erfasst nur ihre eigenen Fahrten. Ein Admin kann falsche Fahrten stornieren; die richtige Fahrt wird danach neu eingetragen.
 
-Neue Mitglieder starten bei 0 Minuten. Negatives Guthaben ist sichtbar und verhindert das nachträgliche Erfassen einer tatsächlich gefahrenen Fahrt nicht. Einladungen laufen automatisch ab; die Oberfläche bietet in Version 1 noch keinen vorzeitigen Widerruf. Im Bedarfsfall kann der Projektinhaber die betreffende Einladung im Supabase Table Editor löschen.
+Neue Mitglieder starten bei 0 Minuten. Negatives Guthaben ist sichtbar und verhindert das nachträgliche Erfassen einer tatsächlich gefahrenen Fahrt nicht. Einladungen laufen nach 7 Tagen automatisch ab und lassen sich jederzeit über **Mitglieder → Links sperren** sofort widerrufen.
 
 ## 6. Auf dem iPhone installieren
 
@@ -121,3 +121,9 @@ Vor dem produktiven Einsatz die aktuellen kostenlosen Tarife, Projektpausierung 
 Die Kostenübersicht zeigt geschätzte Paketverbrauchswerte und dokumentierte Paketkäufe. Sie wickelt keine Zahlungen ab. Paketverfall, Paket-/Guthabenkorrekturen, automatische Ausgleichszahlungen und Backups werden nicht von der App selbst durchgeführt.
 
 Bei «Funktion nicht gefunden» zuerst prüfen, ob die Migration vollständig im richtigen Supabase-Projekt ausgeführt wurde. Bei «Kein Zugriff» prüfen, ob der Login aktiv ist und die Person der Gruppe beigetreten ist. Bei ausbleibendem Live-Abgleich im Supabase-Dashboard kontrollieren, ob die Tabellen der Publikation `supabase_realtime` zugeordnet sind; die Migration erledigt dies normalerweise bereits.
+
+## 8. DDoS- & Missbrauchsschutz
+
+- **Invite-Only-Registrierung (`public-account`):** Sobald das erste Gründer-Konto existiert, lehnt `public-account` jede Selbstregistrierung ohne aktiven, nicht abgelaufenen Einladungscode mit HTTP `403` ab, bevor ein Eintrag in `auth.users` angelegt wird. Alternativ können Admins Konten direkt im Passwort-Dashboard anlegen (`admin-account`).
+- **Datenbankgestütztes Rate-Limiting (`app_private.rate_limits`):** Gehashte Client-IPs sind auf maximal 5 Aufrufe pro 10 Minuten begrenzt (zusätzlich globaler Schutzschalter von 30 Aufrufen pro 10 Minuten gegen verteilte Botnetze); Überschreitungen liefern HTTP `429`.
+- **Vercel WAF & Browser-Hardening (`vercel.json` & `next.config.ts`):** Typische Scanner-Pfade (`/.env`, `/.git`, `/wp-admin` usw.) werden direkt an der Vercel-Edge mit `deny` (`403`) verworfen, Anfragen ausserhalb Europas (`x-vercel-ip-continent != EU`) erhalten eine automatische Browser-Challenge (`challenge`), und HSTS + Content-Security-Policy schützen im Browser.

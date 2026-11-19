@@ -1241,20 +1241,38 @@ export function Dashboard(p: Props) {
                   description="Neue Mitglieder erhalten einen eigenen Login. Eure bisherigen Buchungen bleiben erhalten."
                   aside={
                     admin ? (
-                      <button
-                        className="button secondary"
-                        disabled={p.busy}
-                        onClick={async () => {
-                          const result = await p.mutate("create_invite", {});
-                          if (typeof result === "string") {
-                            setCode(result);
-                            setCopied(null);
-                          }
-                        }}
-                      >
-                        <Plus size={16} />
-                        Einladung erstellen
-                      </button>
+                      <div className="panel-actions">
+                        <button
+                          className="button secondary"
+                          disabled={p.busy}
+                          onClick={async () => {
+                            const result = await p.mutate("create_invite", {});
+                            if (typeof result === "string") {
+                              setCode(result);
+                              setCopied(null);
+                            }
+                          }}
+                        >
+                          <Plus size={16} />
+                          Einladung erstellen
+                        </button>
+                        <button
+                          type="button"
+                          className="button ghost compact-btn"
+                          disabled={p.busy}
+                          title="Alle offenen Einladungslinks sofort ungültig machen"
+                          onClick={async () => {
+                            const ok = await p.mutate("revoke_invites", {});
+                            if (ok) {
+                              setCode("");
+                              setCopied(null);
+                            }
+                          }}
+                        >
+                          <X size={15} />
+                          Links sperren
+                        </button>
+                      </div>
                     ) : undefined
                   }
                 />

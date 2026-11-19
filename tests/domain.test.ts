@@ -9,6 +9,7 @@ import {
 } from "../lib/domain";
 import { demoSnapshot, demoAction } from "../lib/demo";
 import { computeRideInsights, resolvePlaceLabel } from "../lib/location";
+import { extractInviteToken } from "../lib/accounts";
 
 test("Fahrt und Pause werden addiert; Freischaltung gehört nicht zum Buchungsmodell", () => {
   assert.deepEqual(rideDraft("14", "1"), {
@@ -184,4 +185,15 @@ test("Demo speichert Feedback idempotent und prüft Kategorien", () => {
       p_page: "Übersicht",
     }),
   );
+});
+
+test("extractInviteToken akzeptiert sowohl rohe Codes als auch ganze Einladungslinks", () => {
+  assert.equal(extractInviteToken("  9f8e7d6c5b4a  "), "9f8e7d6c5b4a");
+  assert.equal(
+    extractInviteToken(
+      "https://dott-minuten.vercel.app/?invite=9f8e7d6c5b4a#start",
+    ),
+    "9f8e7d6c5b4a",
+  );
+  assert.equal(extractInviteToken(""), "");
 });

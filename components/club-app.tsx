@@ -26,6 +26,7 @@ import {
   adminCreateMemberAccount,
   adminSetMemberPassword,
   emailToUsername,
+  extractInviteToken,
   normalizeUsername,
   registerUsernameAccount,
   requestPasswordReset,
@@ -286,6 +287,7 @@ export function ClubApp() {
       let result: string | boolean = true;
       if (demo) {
         if (action === "create_invite") result = "demo-einladung";
+        else if (action === "revoke_invites") result = true;
         else if (snapshot) {
           const next = demoAction(snapshot, action, full);
           persistDemo(next);
@@ -405,9 +407,10 @@ export function ClubApp() {
     setError("");
     createId.current ??= crypto.randomUUID();
     try {
-      const response = token
+      const cleanToken = token ? extractInviteToken(token) : undefined;
+      const response = cleanToken
         ? await client.rpc("join_group", {
-            p_token: token,
+            p_token: cleanToken,
             p_display_name: displayName,
           })
         : await client.rpc("create_group", {
@@ -627,7 +630,17 @@ export function ClubApp() {
               </>
             )
           ) : (
-            <AuthForm client={client!} startDemo={startDemo} />
+            <AuthForm
+              client={client!}
+              pendingInvite={pendingInvite}
+              onInviteCaptured={(tok) => {
+                setPendingInvite(tok);
+                try {
+                  sessionStorage.setItem(INVITE_KEY, tok);
+                } catch {}
+              }}
+              startDemo={startDemo}
+            />
           )}
           {session && (groups.length === 0 || Boolean(pendingInvite)) && (
             <button className="text-link" disabled={busy} onClick={logout}>
@@ -663,19 +676,42 @@ function Loading() {
 
 function AuthForm({
   client,
+  pendingInvite,
+  onInviteCaptured,
   startDemo,
 }: {
   client: NonNullable<ReturnType<typeof getSupabase>>;
+  pendingInvite: string;
+  onInviteCaptured: (token: string) => void;
   startDemo: () => void;
 }) {
-  const [mode, setMode] = useState<"login" | "register" | "reset">("login");
+  const [mode, setMode] = useState<"login" | "register" | "reset">(
+    pendingInvite ? "register" : "login",
+  );
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteInput, setInviteInput] = useState<string | null>(null);
+  const [requiresInvite, setRequiresInvite] = useState(true);
   const [showPw, setShowPw] = useState(false);
   const [resetNote, setResetNote] = useState("");
   const [resetSent, setResetSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  const effectiveInvite = inviteInput ?? pendingInvite;
+
+  useEffect(() => {
+    let alive = true;
+    client
+      .rpc("registration_requires_invite")
+      .then(({ data, error: rpcErr }) => {
+        if (!alive || rpcErr) return;
+        if (typeof data === "boolean") setRequiresInvite(data);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [client]);
 
   function switchMode(next: "login" | "register" | "reset") {
     setMode(next);
@@ -717,7 +753,9 @@ function AuthForm({
         {mode === "login"
           ? "Melde dich direkt mit deinem Benutzernamen und Passwort an – ganz ohne E-Mail-Code."
           : mode === "register"
-            ? "Wähle einen Benutzernamen und ein Passwort (mind. 6 Zeichen). Danach bist du sofort eingeloggt."
+            ? requiresInvite
+              ? "Erstelle dein Konto mit einem Einladungscode von eurem Gruppen-Admin (Invite-Only Schutz)."
+              : "Wähle deinen Benutzernamen und ein Passwort (mind. 6 Zeichen), um den ersten Club zu gründen."
             : "Sende eine Anfrage an euren Gruppen-Admin. Er kann dir im Passwort-Dashboard sofort ein neues Passwort setzen."}
       </p>
 
@@ -744,7 +782,11 @@ function AuthForm({
                 return;
               }
               if (mode === "register") {
-                await registerUsernameAccount(cleanUser, password);
+                const cleanInvite = extractInviteToken(effectiveInvite);
+                await registerUsernameAccount(cleanUser, password, cleanInvite);
+                if (cleanInvite) {
+                  onInviteCaptured(cleanInvite);
+                }
               }
               const { error: signInErr } = await client.auth.signInWithPassword(
                 {
@@ -760,6 +802,34 @@ function AuthForm({
             }
           }}
         >
+          {mode === "register" && (
+            <label>
+              <span>
+                Einladungscode{" "}
+                {!requiresInvite && (
+                  <span className="optional">optional beim Gründer-Konto</span>
+                )}
+              </span>
+              <div className="input-icon">
+                <Ticket size={18} />
+                <input
+                  type="text"
+                  required={requiresInvite}
+                  maxLength={300}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  placeholder={
+                    requiresInvite
+                      ? "Code oder Einladungslink einfügen"
+                      : "Leer lassen für erstes Gründer-Konto"
+                  }
+                  value={effectiveInvite}
+                  onChange={(e) => setInviteInput(e.target.value)}
+                />
+              </div>
+            </label>
+          )}
+
           <label>
             Benutzername
             <div className="input-icon">

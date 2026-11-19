@@ -46,11 +46,31 @@ Deno.serve(async (req: Request) => {
       return json({ error: "Sitzung abgelaufen. Bitte neu anmelden." }, 401);
     }
 
-    const body = (await req.json()) as Record<string, unknown>;
+    const rawBody = await req.text();
+    if (rawBody.length > 4096) {
+      return json({ error: "Anfrage zu gross." }, 413);
+    }
+
+    const body = JSON.parse(rawBody) as Record<string, unknown>;
     const action = String(body.action ?? "");
     const groupId = String(body.group_id ?? "").trim();
     if (!groupId) {
       return json({ error: "Gruppe fehlt." }, 400);
+    }
+
+    const { data: adminAllowed, error: rlErr } = await supabaseAdmin.rpc(
+      "check_public_rate_limit",
+      {
+        p_bucket: `admin:${callerData.user.id}`,
+        p_limit: 25,
+        p_window_seconds: 600,
+      },
+    );
+    if (rlErr || !adminAllowed) {
+      return json(
+        { error: "Zu viele Admin-Aktionen. Bitte kurz warten." },
+        429,
+      );
     }
 
     const { data: adminMember } = await supabaseAdmin
@@ -195,10 +215,7 @@ Deno.serve(async (req: Request) => {
 
       if (accErr) {
         await supabaseAdmin.auth.admin.deleteUser(created.user.id);
-        return json(
-          { error: "Konto konnte nicht gespeichert werden." },
-          500,
-        );
+        return json({ error: "Konto konnte nicht gespeichert werden." }, 500);
       }
 
       const { error: memErr } = await supabaseAdmin.from("memberships").insert({

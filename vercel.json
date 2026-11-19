@@ -1,0 +1,26 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "routes": [
+    {
+      "src": "^/(?:\\.env|\\.git|wp-admin|wp-login\\.php|xmlrpc\\.php|phpmyadmin|cgi-bin)(?:/.*|$)",
+      "mitigate": {
+        "action": "deny"
+      }
+    },
+    {
+      "src": "^/(?!manifest\\.webmanifest$|icon\\.svg$|apple-touch-icon\\.png$|_next/static/).*",
+      "has": [
+        {
+          "type": "header",
+          "key": "x-vercel-ip-continent",
+          "value": {
+            "neq": "EU"
+          }
+        }
+      ],
+      "mitigate": {
+        "action": "challenge"
+      }
+    }
+  ]
+}

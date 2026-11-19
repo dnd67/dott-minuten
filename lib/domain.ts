@@ -103,6 +103,7 @@ export type Action =
   | "rename_member"
   | "update_member"
   | "create_invite"
+  | "revoke_invites"
   | "submit_feedback"
   | "dismiss_password_reset";
 export type RpcArgs = Record<

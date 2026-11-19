@@ -98,16 +98,40 @@ async function callAccountFunction<T = Record<string, unknown>>(
   return body as T;
 }
 
+export function extractInviteToken(value: string | undefined | null): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  if (raw.includes("invite=")) {
+    try {
+      const parsed = new URL(raw);
+      return (parsed.searchParams.get("invite") ?? "").trim();
+    } catch {
+      const match = /[?&]invite=([^&#\s]+)/.exec(raw);
+      if (match?.[1]) {
+        try {
+          return decodeURIComponent(match[1]).trim();
+        } catch {
+          return match[1].trim();
+        }
+      }
+    }
+  }
+  return raw;
+}
+
 export async function registerUsernameAccount(
   username: string,
   password: string,
+  inviteToken?: string,
 ): Promise<string> {
   const cleanUser = validateUsername(username);
   const cleanPass = validatePassword(password);
+  const cleanInvite = extractInviteToken(inviteToken);
   await callAccountFunction("public-account", {
     action: "register",
     username: cleanUser,
     password: cleanPass,
+    ...(cleanInvite ? { invite_token: cleanInvite } : {}),
   });
   return cleanUser;
 }

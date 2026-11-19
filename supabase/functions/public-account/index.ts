@@ -8,20 +8,73 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-function json(body: Record<string, unknown>, status = 200) {
+function json(
+  body: Record<string, unknown>,
+  status = 200,
+  extraHeaders: Record<string, string> = {},
+) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json",
+      ...extraHeaders,
+    },
   });
 }
 
 function normalizeUsername(value: unknown): string {
   return String(value ?? "")
     .trim()
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/^@+/, "");
+}
+
+function extractInviteToken(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  if (raw.includes("invite=")) {
+    try {
+      const url = new URL(raw);
+      return (url.searchParams.get("invite") ?? "").trim();
+    } catch {
+      const match = /[?&]invite=([^&#\s]+)/.exec(raw);
+      if (match?.[1]) {
+        try {
+          return decodeURIComponent(match[1]).trim();
+        } catch {
+          return match[1].trim();
+        }
+      }
+    }
+  }
+  return raw;
+}
+
+function extractClientIp(req: Request): string {
+  const forwarded = req.headers.get("x-forwarded-for");
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  return (
+    req.headers.get("cf-connecting-ip")?.trim() ||
+    req.headers.get("x-real-ip")?.trim() ||
+    "unknown"
+  );
+}
+
+async function hashBucketKey(input: string): Promise<string> {
+  const bytes = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .slice(0, 16)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 const USERNAME_RE = /^[a-z0-9._-]{2,32}$/;
+const INVITE_TOKEN_RE = /^[a-zA-Z0-9_-]{6,128}$/;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -32,10 +85,18 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const body = (await req.json()) as Record<string, unknown>;
-    const action = String(body.action ?? "");
-    const username = normalizeUsername(body.username);
+    const rawBody = await req.text();
+    if (rawBody.length > 4096) {
+      return json({ error: "Anfrage zu gross." }, 413);
+    }
 
+    const body = JSON.parse(rawBody) as Record<string, unknown>;
+    const action = String(body.action ?? "");
+    if (action !== "register" && action !== "request_reset") {
+      return json({ error: "Unbekannte Aktion." }, 400);
+    }
+
+    const username = normalizeUsername(body.username);
     if (!USERNAME_RE.test(username)) {
       return json(
         {
@@ -52,6 +113,39 @@ Deno.serve(async (req: Request) => {
       { auth: { persistSession: false, autoRefreshToken: false } },
     );
 
+    // Datenschutzfreundliches IP-Rate-Limit (gehasht) + globaler Schutzschalter gegen Botnetze.
+    const clientIp = extractClientIp(req);
+    const ipHash = await hashBucketKey(
+      `minutenclub-rl-v1:${action}:${clientIp}`,
+    );
+
+    const [
+      { data: ipAllowed, error: ipRlErr },
+      { data: globalAllowed, error: globalRlErr },
+    ] = await Promise.all([
+      supabaseAdmin.rpc("check_public_rate_limit", {
+        p_bucket: `ip:${action}:${ipHash}`,
+        p_limit: 5,
+        p_window_seconds: 600,
+      }),
+      supabaseAdmin.rpc("check_public_rate_limit", {
+        p_bucket: `global:${action}`,
+        p_limit: 30,
+        p_window_seconds: 600,
+      }),
+    ]);
+
+    if (ipRlErr || globalRlErr || !ipAllowed || !globalAllowed) {
+      return json(
+        {
+          error:
+            "Zu viele Versuche. Bitte warte 10 Minuten und versuche es erneut.",
+        },
+        429,
+        { "Retry-After": "600" },
+      );
+    }
+
     if (action === "register") {
       const password = typeof body.password === "string" ? body.password : "";
       if (password.length < 6 || password.length > 128) {
@@ -59,6 +153,40 @@ Deno.serve(async (req: Request) => {
           { error: "Das Passwort muss zwischen 6 und 128 Zeichen lang sein." },
           400,
         );
+      }
+
+      // Sobald mindestens ein Konto oder Club existiert, ist Selbstregistrierung streng Invite-Only (Fail-Closed).
+      const { data: requiresInvite, error: reqInviteErr } =
+        await supabaseAdmin.rpc("registration_requires_invite");
+
+      if (reqInviteErr || requiresInvite !== false) {
+        const inviteToken = extractInviteToken(body.invite_token);
+        if (!inviteToken || !INVITE_TOKEN_RE.test(inviteToken)) {
+          return json(
+            {
+              error:
+                "Registrierung ist nur mit einem gültigen Einladungscode vom Gruppen-Admin möglich.",
+            },
+            403,
+          );
+        }
+
+        const { data: validInvite } = await supabaseAdmin
+          .from("invitations")
+          .select("id")
+          .eq("token", inviteToken)
+          .gt("expires_at", new Date().toISOString())
+          .maybeSingle();
+
+        if (!validInvite) {
+          return json(
+            {
+              error:
+                "Ungültiger oder abgelaufener Einladungscode. Bitte lass dir vom Gruppen-Admin einen neuen Link senden.",
+            },
+            403,
+          );
+        }
       }
 
       const { data: existing } = await supabaseAdmin
