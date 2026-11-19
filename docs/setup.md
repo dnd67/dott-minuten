@@ -8,8 +8,8 @@ Diese Schritte werden einmal für eure Crew erledigt. GitHub enthält den Code; 
 
 1. Auf [supabase.com](https://supabase.com) ein Konto erstellen und ein neues Projekt anlegen.
 2. Eine EU-Region auswählen, möglichst nahe an Zürich. Das Datenbankpasswort sicher speichern.
-3. Im **SQL Editor** die SQL-Dateien in Reihenfolge ausführen: zuerst [202611180001_initial.sql](../supabase/migrations/202611180001_initial.sql), danach [202611190001_names_and_cancellations.sql](../supabase/migrations/202611190001_names_and_cancellations.sql). Die erste erstellt Tabellen und Buchungsfunktionen, die zweite ergänzt Namensänderungen und den Storno-Akteur. Jede Datei wird vollständig und jeweils einmal ausgeführt.
-4. Bei Erfolg erscheinen `groups`, `memberships`, `rides`, `minute_entries`, `packages` und `invitations` im Table Editor. Das Schema `app_private` enthält interne Hilfsfunktionen und die Idempotenzverwaltung.
+3. Im **SQL Editor** die SQL-Dateien in Reihenfolge ausführen: zuerst [202611180001_initial.sql](../supabase/migrations/202611180001_initial.sql), danach [202611190001_names_and_cancellations.sql](../supabase/migrations/202611190001_names_and_cancellations.sql) und zuletzt [202611190002_shared_topups.sql](../supabase/migrations/202611190002_shared_topups.sql). Die erste erstellt Tabellen und Buchungsfunktionen, die zweite ergänzt Namen und Storno-Akteur, die dritte gemeinsame Aufladungen mit Beiträgen. Jede Datei wird vollständig und jeweils einmal ausgeführt.
+4. Bei Erfolg erscheinen `groups`, `memberships`, `rides`, `minute_entries`, `packages`, `package_contributions` und `invitations` im Table Editor. Das Schema `app_private` enthält interne Hilfsfunktionen und die Idempotenzverwaltung.
 5. Unter **Project Settings → API / API Keys** die Projekt-URL und den **Publishable Key** kopieren. Falls das Projekt noch Legacy Keys verwendet, funktioniert auch der **anon public** Key.
 
 Keine Tabellen für anonymen Schreibzugriff öffnen. Die Migration enthält bereits sämtliche erforderlichen Berechtigungen. Keine Service-Role-Keys im Browser oder in `NEXT_PUBLIC_`-Variablen verwenden.
@@ -18,7 +18,7 @@ Die Migration ist eine initiale Migration für ein leeres Projekt. Nicht erneut 
 
 ## Bestehende Installation aktualisieren
 
-Wenn die erste Migration schon ausgeführt wurde, **nur die neue Datei** [202611190001_names_and_cancellations.sql](../supabase/migrations/202611190001_names_and_cancellations.sql) im SQL Editor ausführen. Gruppen, Guthaben und Fahrten bleiben erhalten. Die Person hinter früheren Stornos wird, soweit möglich, aus der Gegenbuchung ergänzt. In der lokalen Demo ist keine SQL-Einrichtung nötig.
+Wenn die erste Migration schon ausgeführt wurde, die noch fehlenden Dateien [202611190001_names_and_cancellations.sql](../supabase/migrations/202611190001_names_and_cancellations.sql) und [202611190002_shared_topups.sql](../supabase/migrations/202611190002_shared_topups.sql) in dieser Reihenfolge ausführen. Bereits ausgeführte Migrationen nicht nochmals ausführen. Gruppen, Guthaben und Fahrten bleiben erhalten. Die Person hinter früheren Stornos wird, soweit möglich, aus der Gegenbuchung ergänzt. In der lokalen Demo ist keine SQL-Einrichtung nötig.
 
 Zum Aktualisieren eines lokalen Windows-Checkouts zuerst den Entwicklungsserver mit `Ctrl+C` stoppen, dann:
 
@@ -90,7 +90,7 @@ Es gibt keine zusätzlichen Vercel-Server-Secrets oder OCR-API-Schlüssel. Die k
 2. Unter **Mitglieder → Einladung erstellen** einen Code erzeugen. Dieser ist sieben Tage gültig und kann während dieser Zeit von mehreren Freunden verwendet werden. Nur privat mit der Crew teilen.
 3. August und Max öffnen dieselbe Webseite, melden sich jeweils an und wählen **Ich habe schon einen Einladungscode**. Ihren eigenen Namen und den Code eingeben.
 4. Weitere Mitglieder treten auf demselben Weg bei. Es gibt keine fest eingebaute Begrenzung auf drei Personen.
-5. Ein Admin erfasst unter **Guthaben → Paket erfassen** den tatsächlichen Paketkauf und schreibt unter **Guthaben geben** den Personen ihre jeweiligen Anteile gut. Paketkauf und Guthabenverteilung sind getrennte Aktionen.
+5. Ein Admin wählt **Guthaben → Guthaben aufladen**, trägt Paketminuten, Gesamtpreis und den CHF-Beitrag jedes Mitglieds ein. Die Vorschau zeigt die Minutenanteile. Die Summe der Beiträge muss genau dem Paketpreis entsprechen. Mit **Speichern** werden Kauf, Beiträge und Minutengutschriften gemeinsam gespeichert; keine zusätzliche Gutschrift derselben Minuten vornehmen. **Minuten manuell geben** bleibt als kostenlose interne Gutschrift ohne neuen Paketkauf verfügbar.
 6. Jede Person erfasst nur ihre eigenen Fahrten. Ein Admin kann falsche Fahrten stornieren; die richtige Fahrt wird danach neu eingetragen.
 
 Neue Mitglieder starten bei 0 Minuten. Negatives Guthaben ist sichtbar und verhindert das nachträgliche Erfassen einer tatsächlich gefahrenen Fahrt nicht. Einladungen laufen automatisch ab; die Oberfläche bietet in Version 1 noch keinen vorzeitigen Widerruf. Im Bedarfsfall kann der Projektinhaber die betreffende Einladung im Supabase Table Editor löschen.
@@ -102,7 +102,8 @@ Die HTTPS-Webseite in Safari öffnen, **Teilen → Zum Home-Bildschirm** wählen
 ## 7. Vor dem täglichen Einsatz prüfen
 
 - Zwei unterschiedliche Logins auf zwei Geräten verwenden, beide in derselben Gruppe.
-- Ein Paket erfassen und Minuten verteilen. Ohne gemeinsames Paket sind Kosten offen; Guthaben kann trotzdem erfasst werden.
+- 600 Minuten für CHF 90.00 aufladen, mit Beiträgen von CHF 30.00 / 45.00 / 15.00: 200 / 300 / 100 Minuten müssen gutgeschrieben werden. Eine Wiederholung desselben Speicheraufrufs darf weder Paket noch Gutschriften verdoppeln.
+- Auf der Startseite eigenes Restguthaben, eigenen Verbrauch und Gruppenrest vergleichen. Das Diagramm zeigt pro Mitglied das gesamte Kontingent hinter dem bereits verbrauchten Anteil. Stornos verändern nicht das Kontingent.
 - Mit Oskar eine Fahrt von 14 Minuten und 1 Minute Pause eintragen: genau 15 Minuten Verbrauch.
 - Auf dem zweiten Gerät die aktualisierte Fahrt und den Saldo prüfen. Ein manuelles Neuladen darf nicht nötig sein; bei ausgefallenem Realtime greift spätestens der 30-Sekunden-Abgleich im sichtbaren Fenster.
 - Das zweite Gerät in den Hintergrund schicken, eine Änderung vornehmen und zurückkehren: neuer Stand wird geladen.

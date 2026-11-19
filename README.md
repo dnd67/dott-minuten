@@ -12,14 +12,17 @@ Eine iPhone-taugliche Web-App für eure gemeinsamen Scooter-Minutenpakete. Jede 
 - Eigene Fahrten manuell erfassen: **Verbrauch = Fahrzeit + Pausierzeit**.
 - Frei wählbare positive Minutengutschriften durch Admins, keine festen Aufladepakete.
 - Persönliche Salden, gemeinsamer Paketbestand und nachvollziehbares Buchungsjournal.
-- Paketkäufe mit Minuten, CHF-Preis, Kaufzeitpunkt und zahlender Person dokumentieren.
-- Verbrauchsstatistik nach Person und Zeitraum, Fahr- und Pausierzeit getrennt.
+- Guthaben gemeinsam aufladen: Paketminuten, CHF-Preis und Beiträge pro Person erfassen. Die App verteilt die Minuten automatisch nach bezahltem Anteil.
+- Verbrauchsstatistik nach Person und Zeitraum, Fahr- und Pausierzeit getrennt. Auf der Startseite: eigenes Restguthaben, eigener Verbrauch, Gruppenrest und Restguthaben aller Mitglieder.
+- Balkendiagramm pro Person: transparentes Gesamtkontingent im Hintergrund, bisheriger Verbrauch davor.
 - Fahrten durch Admins stornieren: Gegenbuchung statt Löschen. Eigener Storno-Verlauf mit Grund, Zeitpunkt, ausführender Person und zurückgegebenen Minuten.
 - Supabase Realtime plus erneutes Laden nach App-Rückkehr, Verbindungsaufbau und alle 30 Sekunden.
 - Home-Bildschirm-Installation mit App-Manifest und iPhone-Icon.
 - Expliziter Demo-Modus mit Oskar, August und Max. Die Beispieldaten bleiben auf dem jeweiligen Gerät.
 
 **Abrechnung:** 14 Minuten Fahrt + 1 Minute Pause ergeben 15 Minuten Verbrauch. Freischaltgebühren werden ignoriert. Die CHF-Verbrauchswerte sind ausdrücklich Schätzungen aus dem gewichteten Preis der bis zum Fahrtzeitpunkt erfassten Paketkäufe; sie sind keine bestätigte Dott-Paketzuordnung und keine verbindlichen Schulden. Historische Schätzungen werden bei späteren Käufen nicht rückwirkend verändert. Unbekannte Kosten bleiben offen.
+
+Beispiel einer Aufladung: 600 Minuten kosten CHF 90.00. Oskar zahlt CHF 30.00, August CHF 45.00 und Max CHF 15.00. Die App schreibt automatisch **200, 300 und 100 Minuten** gut. Die Beiträge müssen zusammen dem Paketpreis entsprechen. Rundungsreste werden nach grösstem Nachkommaanteil verteilt; die Summe der gutgeschriebenen ganzen Minuten entspricht immer dem Paket.
 
 ## Lokal starten
 
@@ -50,7 +53,7 @@ npm run test:e2e
 
 Für die Browserprüfungen einen eventuell laufenden `npm run dev`-Prozess zuerst beenden.
 
-Die Datenbanktests führen dieselbe SQL-Migration in PostgreSQL via PGlite aus. Sie prüfen unter anderem RLS, Rechte, atomare Buchungen, Wiederholungen, Stornos und deaktivierte Mitglieder. Der Live-Betrieb mit Supabase Realtime, E-Mail und mehreren iPhones muss nach der Einrichtung separat abgenommen werden.
+Die Datenbanktests führen dieselben SQL-Migrationen in PostgreSQL via PGlite aus. Sie prüfen unter anderem RLS, Rechte, atomare Buchungen, Wiederholungen, Stornos und deaktivierte Mitglieder. Der Live-Betrieb mit Supabase Realtime, E-Mail und mehreren iPhones muss nach der Einrichtung separat abgenommen werden.
 
 ## Aufbau
 

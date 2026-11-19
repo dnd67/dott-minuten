@@ -2098,3 +2098,187 @@ td > div + small {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.quota-legend {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 0 24px 18px;
+  color: #7b8d77;
+  font-size: 11px;
+}
+.quota-legend span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.quota-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.quota-swatch-total {
+  background: rgba(65, 119, 85, 0.2);
+  border: 1px solid rgba(65, 119, 85, 0.25);
+}
+.quota-swatch-used {
+  background: var(--green);
+}
+.quota-columns {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(100px, 1fr);
+  gap: 15px;
+  overflow-x: auto;
+  padding: 12px 24px 24px;
+}
+.quota-person {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  min-width: 0;
+  font-size: 11px;
+  color: #87947f;
+}
+.quota-bars {
+  position: relative;
+  height: 190px;
+  width: 100%;
+  border-bottom: 1px solid #c9d5c2;
+  margin-bottom: 14px;
+}
+.quota-back,
+.quota-used {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 5px 5px 0 0;
+}
+.quota-back {
+  width: 56px;
+  background: rgba(65, 119, 85, 0.2);
+  border: 1px solid rgba(65, 119, 85, 0.18);
+}
+.quota-used {
+  width: 30px;
+  background: var(--green);
+}
+.quota-name {
+  color: var(--text);
+  font-size: 12px;
+  margin-bottom: 7px;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.quota-person small {
+  font-size: 10px;
+  margin-top: 6px;
+  color: #78945b;
+}
+.quota-person small.negative {
+  color: var(--red);
+}
+.contribution-fields {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin: 4px 0 22px;
+  padding: 17px 13px;
+  min-width: 0;
+}
+.contribution-fields legend {
+  font-family: "Manrope", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0 6px;
+}
+.contribution-fields > p,
+.contribution-fields > small {
+  display: block;
+  color: #97a28d;
+  font-size: 10px;
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+.contribution-row {
+  display: grid;
+  grid-template-columns: minmax(55px, 1fr) minmax(90px, 1fr) 60px;
+  gap: 10px;
+  align-items: center;
+  margin: 12px 0;
+}
+.contribution-row > label {
+  margin: 0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.contribution-row > div {
+  position: relative;
+}
+.contribution-row > div > span {
+  position: absolute;
+  left: 9px;
+  top: 14px;
+  font-size: 10px;
+  color: #9aa68e;
+}
+.contribution-row input {
+  padding-left: 36px;
+  font-size: 13px;
+}
+.contribution-row > strong {
+  font-size: 11px;
+  white-space: nowrap;
+  text-align: right;
+  color: #5c7f43;
+}
+.allocation-status {
+  font-size: 11px;
+  color: #6d8358;
+  background: #f3f7ed;
+  border-radius: 8px;
+  padding: 11px;
+  margin: 15px 0 10px;
+  line-height: 1.6;
+}
+.package-shares {
+  font-size: 10px;
+  line-height: 1.8;
+  white-space: normal;
+  min-width: 185px;
+}
+@media (max-width: 720px) {
+  .quota-legend {
+    padding: 0 17px 15px;
+    font-size: 9px;
+    gap: 14px;
+  }
+  .quota-columns {
+    padding: 7px 17px 20px;
+    gap: 10px;
+    grid-auto-columns: minmax(90px, 1fr);
+  }
+  .quota-bars {
+    height: 160px;
+  }
+  .quota-back {
+    width: 47px;
+  }
+  .quota-used {
+    width: 26px;
+  }
+  .quota-person {
+    font-size: 10px;
+  }
+  .quota-name {
+    font-size: 11px;
+  }
+  .contribution-row {
+    gap: 7px;
+    grid-template-columns: minmax(45px, 1fr) minmax(90px, 1fr) 58px;
+  }
+  .contribution-row input {
+    font-size: 16px;
+  }
+}

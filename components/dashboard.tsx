@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import {
   chf,
+  allocateMinutes,
   dateLabel,
   localDateTime,
   minutes,
@@ -56,6 +57,7 @@ type Props = {
   mutate: (action: Action, args: RpcArgs) => Promise<string | boolean>;
   onGroup: (id: string) => void;
   onLogout: () => void;
+  onBeginAction: () => void;
   onRefresh: () => void;
   onResetDemo: () => void;
 };
@@ -134,15 +136,11 @@ export function Dashboard(p: Props) {
           ).getTime() >=
             Date.now() - Number(period) * 86400000),
     );
-  const month = zurichKey(new Date()).slice(0, 7);
-  const monthRides = all.rides.filter((r) =>
-    zurichKey(new Date(r.occurred_at)).startsWith(month),
-  );
-  const monthMinutes = monthRides.reduce((n, r) => n + r.charged_seconds, 0);
   const rank = data.members
     .map((m) => ({ ...m, ...summary(data, m.id) }))
     .sort((a, b) => b.consumed - a.consumed);
   function open(value: Modal) {
+    p.onBeginAction();
     setModal(value);
   }
   const filters = (
@@ -500,10 +498,10 @@ export function Dashboard(p: Props) {
                 </div>
                 <Metric
                   icon={<Clock3 size={20} />}
-                  label="Verbrauch der Crew"
-                  value={minutes(monthMinutes)}
+                  label="Von dir verbraucht"
+                  value={minutes(own.consumed)}
                   unit="Minuten"
-                  note="Diesen Monat · inklusive Pausen"
+                  note="Seit deinem Start · inklusive Pausen"
                 />
                 <Metric
                   icon={<Users size={20} />}
@@ -517,6 +515,13 @@ export function Dashboard(p: Props) {
                   }
                 />
               </section>
+              <section className="panel quota-panel">
+                <PanelHeading
+                  title="Kontingent & Verbrauch"
+                  description="Heller Balken: insgesamt zugeteilte Minuten. Dunkler Balken: bereits verbraucht."
+                />
+                <QuotaChart data={data} />
+              </section>
               <section className="middle-grid">
                 <div className="panel activity-panel">
                   <PanelHeading
@@ -529,7 +534,7 @@ export function Dashboard(p: Props) {
                 <div className="panel crew-panel">
                   <PanelHeading
                     title="Eure Crew"
-                    description={`${data.members.filter((m) => m.active).length} aktive Mitglieder`}
+                    description="So viele Minuten hat jede Person noch übrig."
                     aside={
                       <button
                         className="icon-button"
@@ -549,25 +554,25 @@ export function Dashboard(p: Props) {
                             {m.display_name}
                             {m.id === me?.id && <small> du</small>}
                           </strong>
-                          <div className="progress-track">
+                          <div className="progress-track" aria-hidden="true">
                             <span
                               className={`progress-fill color-${memberIndex(m.id)}`}
                               style={{
-                                width: `${all.consumed ? Math.max(2, (m.consumed / all.consumed) * 100) : 0}%`,
+                                width: `${m.quota ? Math.min(100, Math.max(0, (m.balance / m.quota) * 100)) : 0}%`,
                               }}
                             />
                           </div>
                         </div>
                         <span className="crew-value">
-                          {minutes(m.consumed)}
-                          <small> Min.</small>
+                          {minutes(m.balance)}
+                          <small> Min. übrig</small>
                         </span>
                       </div>
                     ))}
                   </div>
                   <div className="crew-total">
-                    <span>Insgesamt verbraucht</span>
-                    <strong>{minutes(all.consumed)} Min.</strong>
+                    <span>Persönliches Guthaben zusammen</span>
+                    <strong>{minutes(all.balance)} Min.</strong>
                   </div>
                 </div>
               </section>
@@ -659,7 +664,7 @@ export function Dashboard(p: Props) {
                         onClick={() => open("credit")}
                       >
                         <Plus size={16} />
-                        Guthaben geben
+                        Minuten manuell geben
                       </button>
                     ) : undefined
                   }
@@ -689,7 +694,7 @@ export function Dashboard(p: Props) {
               <section className="panel">
                 <PanelHeading
                   title="Minutenpakete"
-                  description="Hier dokumentiert ihr eure tatsächlich gekauften Pakete und wer bezahlt hat."
+                  description="Paketpreis und Beiträge erfassen. Die Minuten werden entsprechend den bezahlten Anteilen gutgeschrieben."
                   aside={
                     admin ? (
                       <button
@@ -697,7 +702,7 @@ export function Dashboard(p: Props) {
                         onClick={() => open("package")}
                       >
                         <Plus size={16} />
-                        Paket erfassen
+                        Guthaben aufladen
                       </button>
                     ) : undefined
                   }
@@ -710,6 +715,7 @@ export function Dashboard(p: Props) {
                         <th>Bezahlt von</th>
                         <th>Minuten</th>
                         <th>Preis</th>
+                        <th>Beiträge & Minutenanteile</th>
                         <th className="optional-column">Notiz</th>
                       </tr>
                     </thead>
@@ -724,6 +730,28 @@ export function Dashboard(p: Props) {
                             <td>{member(pkg.payer_id)?.display_name}</td>
                             <td>{minutes(pkg.seconds)} Min.</td>
                             <td>{chf(pkg.price_rappen)}</td>
+                            <td>
+                              <div className="package-shares">
+                                {(data.contributions ?? [])
+                                  .filter((c) => c.package_id === pkg.id)
+                                  .map((c) => (
+                                    <div key={c.id}>
+                                      <strong>
+                                        {member(c.member_id)?.display_name}
+                                      </strong>
+                                      : {chf(c.amount_rappen)} →{" "}
+                                      {minutes(c.allocated_seconds)} Min.
+                                    </div>
+                                  ))}
+                                {!(data.contributions ?? []).some(
+                                  (c) => c.package_id === pkg.id,
+                                ) && (
+                                  <span className="unit">
+                                    Keine Beiträge hinterlegt (älterer Kauf)
+                                  </span>
+                                )}
+                              </div>
+                            </td>
                             <td className="optional-column">
                               {pkg.note || "–"}
                             </td>
@@ -739,9 +767,10 @@ export function Dashboard(p: Props) {
                   )}
                 </div>
                 <p className="panel-footnote">
-                  Paketkäufe sind dokumentierte Zahlungen. Weitere Beiträge,
-                  Paketkorrekturen, Verfall und Ausgleichszahlungen sind für
-                  eine spätere Version vorgesehen.
+                  Beiträge dokumentieren eure Zahlungen; die App führt keine
+                  Überweisungen aus. Minuten werden nach bezahltem Anteil
+                  verteilt. Paketkorrekturen, Verfall und Ausgleichszahlungen
+                  sind für später vorgesehen.
                 </p>
               </section>
               <section className="panel">
@@ -1256,6 +1285,34 @@ function EntryDialog({
     [pause, setPause] = useState("0"),
     [error, setError] = useState("");
   const [when] = useState(() => localDateTime());
+  const [packageMinutes, setPackageMinutes] = useState("");
+  const [packagePrice, setPackagePrice] = useState("");
+  const [contributions, setContributions] = useState<Record<string, string>>(
+    {},
+  );
+  const [activeMembers] = useState(() => data.members.filter((m) => m.active));
+  let allocation: ReturnType<typeof allocateMinutes> = [],
+    allocationMessage = "",
+    contributedRappen = 0,
+    expectedRappen: number | null = null;
+  if (kind === "package") {
+    try {
+      const inputs = activeMembers.map((m) => ({
+        member_id: m.id,
+        amount_rappen: moneyRappen(contributions[m.id] || "0"),
+      }));
+      contributedRappen = inputs.reduce((n, c) => n + c.amount_rappen, 0);
+      expectedRappen = moneyRappen(packagePrice);
+      allocation = allocateMinutes(
+        wholeMinutes(packageMinutes),
+        expectedRappen,
+        inputs,
+      );
+    } catch (e) {
+      allocationMessage =
+        e instanceof Error ? e.message : "Bitte Eingaben prüfen.";
+    }
+  }
   useEffect(() => {
     dialog.current?.showModal();
     first.current?.focus();
@@ -1268,7 +1325,7 @@ function EntryDialog({
       : kind === "credit"
         ? "Minuten gutschreiben."
         : kind === "package"
-          ? "Ein neues Minutenpaket."
+          ? "Gemeinsam aufladen."
           : kind === "rename"
             ? "Name ändern."
             : "Fahrt stornieren.";
@@ -1276,9 +1333,9 @@ function EntryDialog({
     kind === "ride"
       ? "Trage die Zeiten aus deinen Fahrtdetails ein. Die Pause zählt mit."
       : kind === "credit"
-        ? "Verteile Guthaben innerhalb eurer Gruppe."
+        ? "Kostenlose interne Gutschrift ohne Paketkauf. Für bezahlte Minuten nutze Guthaben aufladen."
         : kind === "package"
-          ? "Dokumentiere euren Kauf. Persönliches Guthaben wird separat zugeteilt."
+          ? "Erfasse Paketminuten, Preis und die Beiträge eurer Crew. Eure Minutenanteile werden direkt gutgeschrieben."
           : kind === "rename"
             ? "Der neue Name gilt in der ganzen Gruppe. Fahrten und Guthaben bleiben derselben Person zugeordnet."
             : "Die Minuten werden mit einer Gegenbuchung zurückgegeben. Die ursprüngliche Fahrt bleibt sichtbar.";
@@ -1303,15 +1360,20 @@ function EntryDialog({
           p_minutes: wholeMinutes(str("minutes")),
           p_reason: str("reason"),
         });
-      else if (kind === "package")
-        await onSave("record_package", {
+      else if (kind === "package") {
+        if (allocationMessage) throw new Error(allocationMessage);
+        await onSave("record_topup", {
           p_payer_id: str("member"),
           p_minutes: wholeMinutes(str("minutes")),
-          p_price_rappen: moneyRappen(str("price")),
+          p_price_rappen: moneyRappen(packagePrice),
+          p_contributions: allocation.map((c) => ({
+            member_id: c.member_id,
+            amount_rappen: c.amount_rappen,
+          })),
           p_purchased_at: new Date(str("when")).toISOString(),
           p_note: str("note"),
         });
-      else if (kind === "rename" && renameMember) {
+      } else if (kind === "rename" && renameMember) {
         const name = str("display_name").trim();
         if (!name || name.length > 60)
           throw new Error("Bitte einen Namen mit 1 bis 60 Zeichen eingeben.");
@@ -1423,7 +1485,7 @@ function EntryDialog({
           {(kind === "credit" || kind === "package") && (
             <>
               <label>
-                {kind === "credit" ? "Guthaben für" : "Bezahlt von"}
+                {kind === "credit" ? "Guthaben für" : "Paket gekauft von"}
                 <select name="member" defaultValue={me?.id}>
                   {data.members
                     .filter((m) => m.active)
@@ -1446,6 +1508,13 @@ function EntryDialog({
                   max="10000000"
                   step="1"
                   placeholder="z. B. 200"
+                  {...(kind === "package"
+                    ? {
+                        value: packageMinutes,
+                        onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
+                          setPackageMinutes(e.target.value),
+                      }
+                    : {})}
                 />
               </label>
               {kind === "package" && (
@@ -1456,10 +1525,60 @@ function EntryDialog({
                     required
                     inputMode="decimal"
                     placeholder="z. B. 90.00"
+                    value={packagePrice}
+                    onChange={(e) => setPackagePrice(e.target.value)}
                   />
                 </label>
               )}
             </>
+          )}
+          {kind === "package" && (
+            <fieldset className="contribution-fields">
+              <legend>Wer hat wie viel beigetragen?</legend>
+              <p>Trage die Beträge in CHF ein. Kein Beitrag = 0.00.</p>
+              {activeMembers.map((m) => (
+                <div className="contribution-row" key={m.id}>
+                  <label htmlFor={`contribution-${m.id}`}>
+                    {m.display_name}
+                  </label>
+                  <div>
+                    <span>CHF</span>
+                    <input
+                      id={`contribution-${m.id}`}
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      value={contributions[m.id] ?? ""}
+                      onChange={(e) =>
+                        setContributions((old) => ({
+                          ...old,
+                          [m.id]: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <strong>
+                    {allocation.length
+                      ? `${allocation.find((c) => c.member_id === m.id)?.minutes ?? 0} Min.`
+                      : "–"}
+                  </strong>
+                </div>
+              ))}
+              <div className="sum-line">
+                <span>Beiträge gesamt</span>
+                <strong>
+                  {chf(contributedRappen)}
+                  {expectedRappen !== null ? ` / ${chf(expectedRappen)}` : ""}
+                </strong>
+              </div>
+              <div className="allocation-status" role="status">
+                {allocationMessage ||
+                  `${packageMinutes} Minuten werden gemeinsam aufgeteilt.`}
+              </div>
+              <small>
+                Ganze Minuten, Restminuten nach grösstem Nachkommaanteil. Bei
+                Gleichstand entscheidet die feste Mitglieds-ID.
+              </small>
+            </fieldset>
           )}
           {(kind === "ride" || kind === "package") && (
             <>
@@ -1535,5 +1654,58 @@ function EntryDialog({
         </form>
       </div>
     </dialog>
+  );
+}
+
+function QuotaChart({ data }: { data: Snapshot }) {
+  const rows = data.members
+    .map((m) => ({ ...m, ...summary(data, m.id) }))
+    .filter((m) => m.active || m.quota || m.consumed);
+  const max = Math.max(60, ...rows.flatMap((m) => [m.quota, m.consumed]));
+  return (
+    <div className="quota-chart">
+      <div className="quota-legend">
+        <span>
+          <i className="quota-swatch-total" />
+          Kontingent insgesamt
+        </span>
+        <span>
+          <i className="quota-swatch-used" />
+          Bereits verbraucht
+        </span>
+      </div>
+      <div className="quota-columns">
+        {rows.map((m) => (
+          <div className="quota-person" key={m.id}>
+            <div
+              className="quota-bars"
+              role="img"
+              aria-label={`${m.display_name}: ${minutes(m.consumed)} von ${minutes(m.quota)} Minuten verbraucht, ${minutes(m.balance)} Minuten übrig.`}
+            >
+              <div
+                className="quota-back"
+                style={{ height: `${(m.quota / max) * 100}%` }}
+              />
+              <div
+                className="quota-used"
+                style={{ height: `${(m.consumed / max) * 100}%` }}
+              />
+            </div>
+            <strong className="quota-name">{m.display_name}</strong>
+            <span>
+              {minutes(m.consumed)} / {minutes(m.quota)} Min.
+            </span>
+            <small className={m.balance < 0 ? "negative" : ""}>
+              {minutes(m.balance)} Min. übrig
+            </small>
+          </div>
+        ))}
+      </div>
+      <p className="panel-footnote">
+        Kontingent = alle gutgeschriebenen Minuten. Stornierte Fahrten zählen
+        nicht als Verbrauch. Gleiche Skala für alle Personen; bei Überzug ragt
+        der Verbrauch über das Kontingent hinaus.
+      </p>
+    </div>
   );
 }

@@ -11,6 +11,8 @@
 - Storno-Verlauf mit Zeitpunkt, Grund, ausführender Person und zurückgebuchten Minuten.
 - Admin-Gutschriften, Paketkäufe, Mitgliederrollen und Fahrtstornos.
 - Journalbasierte Salden, Verbrauchsstatistik und gekennzeichnete Kostenschätzungen.
+- Gemeinsame Aufladungen mit Paketpreis, Einzelbeiträgen und automatisch anteilig gutgeschriebenen Minuten.
+- Startseite mit eigenem Rest/Verbrauch, Gruppenrest, Restguthaben der anderen und überlagerten Kontingent-/Verbrauchsbalken.
 - Gemeinsame Dashboard-Abfrage, Realtime-Hinweise, Abgleich nach Rückkehr und periodisches Nachladen.
 - Getrennte lokale Demo mit Oskar, August und Max.
 - SQL-Migration mit RLS und Idempotenz, automatisierte Fach- und Datenbanktests.

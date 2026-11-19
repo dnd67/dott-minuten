@@ -162,6 +162,7 @@ export function ClubApp() {
       "rides",
       "minute_entries",
       "packages",
+      "package_contributions",
     ]) {
       channel.on(
         "postgres_changes",
@@ -211,7 +212,9 @@ export function ClubApp() {
     busyRef.current = true;
     setBusy(true);
     setError("");
-    const payload = JSON.stringify([groupId, action, args]);
+    // Ein geöffneter Vorgang behält seinen Schlüssel auch beim Korrigieren nach einem Fehler.
+    // War der erste Versuch bereits verbucht, weist die Datenbank geänderte Nutzdaten ab.
+    const payload = JSON.stringify([groupId, action]);
     if (command.current?.payload !== payload)
       command.current = { payload, id: crypto.randomUUID() };
     try {
@@ -321,6 +324,9 @@ export function ClubApp() {
           setSyncedAt(null);
         }}
         onLogout={logout}
+        onBeginAction={() => {
+          command.current = null;
+        }}
         onRefresh={() => void refreshRef.current()}
         onResetDemo={() => {
           try {

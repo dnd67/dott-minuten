@@ -18,15 +18,17 @@ test("Demo: Fahrt, Guthaben, Paket, Storno, Filter und Einladung", async ({
   const nav = (name: string) =>
     page.locator(".sidebar .nav-item").filter({ hasText: name });
   await nav("Guthaben").click();
-  await page.getByRole("button", { name: "Guthaben geben" }).click();
+  await page.getByRole("button", { name: "Minuten manuell geben" }).click();
   await page.getByLabel("Guthaben für").selectOption("demo-0");
   await page.getByLabel("Minuten", { exact: true }).fill("45");
   await page.getByLabel("Grund").fill("Testgutschrift");
   await page.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(page.getByText("Testgutschrift")).toBeVisible();
-  await page.getByRole("button", { name: "Paket erfassen" }).click();
+  await page.getByRole("button", { name: "Guthaben aufladen" }).click();
   await page.getByLabel("Minuten", { exact: true }).fill("300");
   await page.getByLabel("Paketpreis (CHF)").fill("45.00");
+  await page.getByLabel("Oskar", { exact: true }).fill("15");
+  await page.getByLabel("August", { exact: true }).fill("30");
   await page.getByLabel("Notiz optional").fill("Testpaket");
   await page.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(page.getByRole("cell", { name: "Testpaket" })).toBeVisible();
@@ -108,6 +110,21 @@ test("iPhone-Abmessungen: alle Seiten bedienbar, Dialog und Offline-Hinweis", as
   await context.setOffline(false);
   await page
     .locator(".mobile-nav")
+    .getByRole("button", { name: "Guthaben", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Guthaben aufladen" }).click();
+  await page.getByLabel("Minuten", { exact: true }).fill("100");
+  await page.getByLabel("Paketpreis (CHF)").fill("10");
+  await page.getByLabel("Oskar", { exact: true }).fill("3");
+  await page.getByLabel("August", { exact: true }).fill("3");
+  await page.getByLabel("Max", { exact: true }).fill("4");
+  await expect(
+    page.locator(".contribution-row").filter({ hasText: "Max" }),
+  ).toContainText("40 Min.");
+  await page.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page
+    .locator(".mobile-nav")
     .getByRole("button", { name: "Mitglieder", exact: true })
     .click();
   await page
@@ -124,4 +141,58 @@ test("iPhone-Abmessungen: alle Seiten bedienbar, Dialog und Offline-Hinweis", as
     page.getByRole("button", { name: "Demo ausprobieren" }),
   ).toBeVisible();
   await context.close();
+});
+
+test("Aufladen nach Beiträgen aktualisiert Home, Restguthaben und Kontingentdiagramm", async ({
+  page,
+}) => {
+  await page.goto("/?demo=1");
+  await expect(
+    page.getByRole("img", {
+      name: "Oskar: 51 von 200 Minuten verbraucht, 149 Minuten übrig.",
+    }),
+  ).toBeVisible();
+  await page
+    .locator(".sidebar .nav-item")
+    .filter({ hasText: "Guthaben" })
+    .click();
+  await page.getByRole("button", { name: "Guthaben aufladen" }).click();
+  await page.getByLabel("Minuten", { exact: true }).fill("600");
+  await page.getByLabel("Paketpreis (CHF)").fill("90");
+  await page.getByLabel("Oskar", { exact: true }).fill("30");
+  await page.getByLabel("August", { exact: true }).fill("45");
+  // Noch nicht vollständig finanziert: keine Buchung.
+  await page.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByLabel("Max", { exact: true }).fill("15");
+  await expect(
+    page.locator(".contribution-row").filter({ hasText: "Oskar" }),
+  ).toContainText("200 Min.");
+  await expect(
+    page.locator(".contribution-row").filter({ hasText: "August" }),
+  ).toContainText("300 Min.");
+  await expect(
+    page.locator(".contribution-row").filter({ hasText: "Max" }),
+  ).toContainText("100 Min.");
+  await page.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page
+    .locator(".sidebar .nav-item")
+    .filter({ hasText: "Übersicht" })
+    .click();
+  await expect(page.locator(".balance-number")).toContainText("349");
+  await expect(
+    page.getByRole("img", {
+      name: "Oskar: 51 von 400 Minuten verbraucht, 349 Minuten übrig.",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".metric-card").filter({ hasText: "Von dir verbraucht" }),
+  ).toContainText("51");
+  await expect(
+    page.locator(".metric-card").filter({ hasText: "Gemeinsamer Bestand" }),
+  ).toContainText(/1['’]043/);
+  await expect(
+    page.locator(".crew-row").filter({ hasText: "August" }),
+  ).toContainText("447");
 });

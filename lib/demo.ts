@@ -1,4 +1,9 @@
-import type { Snapshot, RpcArgs, Action } from "./domain";
+import {
+  allocateMinutes,
+  type Snapshot,
+  type RpcArgs,
+  type Action,
+} from "./domain";
 const gid = "demo-group";
 export const DEMO_USER = "demo-oskar";
 export function demoSnapshot(): Snapshot {
@@ -69,6 +74,14 @@ export function demoSnapshot(): Snapshot {
         created_at: r.occurred_at,
       })),
     ],
+    contributions: members.map((m) => ({
+      id: `contribution-${m.id}`,
+      group_id: gid,
+      package_id: "package-1",
+      member_id: m.id,
+      amount_rappen: 3000,
+      allocated_seconds: 200 * 60,
+    })),
     packages: [
       {
         id: "package-1",
@@ -133,7 +146,54 @@ export function demoAction(
       reason: String(args.p_reason),
       created_at: now,
     });
-  else if (action === "record_package")
+  else if (action === "record_topup") {
+    if (data.packages.some((p) => p.id === id)) return data;
+    if (!Array.isArray(args.p_contributions))
+      throw new Error("Bitte Beiträge angeben.");
+    const shares = allocateMinutes(
+      Number(args.p_minutes),
+      Number(args.p_price_rappen),
+      args.p_contributions,
+    );
+    if (
+      shares.some(
+        (c) => !data.members.some((m) => m.id === c.member_id && m.active),
+      )
+    )
+      throw new Error("Aktives Mitglied nicht gefunden.");
+    data.packages.push({
+      id,
+      group_id: gid,
+      payer_id: String(args.p_payer_id),
+      seconds: Number(args.p_minutes) * 60,
+      price_rappen: Number(args.p_price_rappen),
+      purchased_at: String(args.p_purchased_at),
+      note: String(args.p_note),
+    });
+    data.contributions ??= [];
+    for (const c of shares) {
+      data.contributions.push({
+        id: crypto.randomUUID(),
+        group_id: gid,
+        package_id: id,
+        member_id: c.member_id,
+        amount_rappen: c.amount_rappen,
+        allocated_seconds: c.minutes * 60,
+      });
+      if (c.minutes > 0)
+        data.entries.push({
+          id: crypto.randomUUID(),
+          group_id: gid,
+          member_id: c.member_id,
+          seconds: c.minutes * 60,
+          kind: "credit",
+          ride_id: null,
+          package_id: id,
+          reason: "Anteil am Minutenpaket",
+          created_at: now,
+        });
+    }
+  } else if (action === "record_package")
     data.packages.push({
       id,
       group_id: gid,

@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import { allocateMinutes } from "../lib/domain";
 import { PGlite } from "@electric-sql/pglite";
 
 test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => {
@@ -422,6 +423,175 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
       assert.equal(value.members.length, 2);
       assert.equal(value.rides.length, 2);
       assert.ok(value.entries.length >= 5);
+    },
+  );
+  await t.test(
+    "Gemeinsame Aufladungen verteilen Beiträge und Minuten atomar",
+    async () => {
+      await as(owner, "select public.update_member($1,$2,$3,'member',true)", [
+        gid,
+        randomUUID(),
+        friendMember,
+      ]);
+      await as(outsider, "select public.join_group($1,'Max')", [token]);
+      const maxMember = (
+        await as<{ id: string }>(
+          owner,
+          "select id from public.memberships where user_id=$1",
+          [outsider],
+        )
+      )[0].id;
+      const inputs = [
+        { member_id: ownerMember, amount_rappen: 3000 },
+        { member_id: friendMember, amount_rappen: 4500 },
+        { member_id: maxMember, amount_rappen: 1500 },
+      ];
+      const id = randomUUID(),
+        date = "2026-01-03T12:00:00Z";
+      const sql = "select public.record_topup($1,$2,$3,$4,$5,$6,$7,$8)";
+      const params = [
+        gid,
+        id,
+        ownerMember,
+        600,
+        9000,
+        date,
+        JSON.stringify(inputs),
+        "Gemeinsame Aufladung",
+      ];
+      await assert.rejects(() => as(friend, sql, params), /Keine Berechtigung/);
+      await as(owner, sql, params);
+      await as(owner, sql, params);
+      const cs = await as<{
+        member_id: string;
+        amount_rappen: number;
+        allocated_seconds: number;
+      }>(
+        owner,
+        "select * from public.package_contributions where package_id=$1",
+        [id],
+      );
+      assert.equal(cs.length, 3);
+      for (const c of cs)
+        assert.equal(
+          Number(c.allocated_seconds),
+          allocateMinutes(600, 9000, inputs).find(
+            (x) => x.member_id === c.member_id,
+          )!.minutes * 60,
+        );
+      const entries = await as<{ seconds: number }>(
+        owner,
+        "select * from public.minute_entries where package_id=$1",
+        [id],
+      );
+      assert.equal(entries.length, 3);
+      assert.equal(
+        entries.reduce((n, e) => n + Number(e.seconds), 0),
+        36000,
+      );
+      await assert.rejects(
+        () =>
+          as(
+            friend,
+            "insert into public.package_contributions(group_id) values($1)",
+            [gid],
+          ),
+        /permission denied/,
+      );
+      // Ein Cent pro Person, zehn Minuten: Summe bleibt zehn, nicht neun oder zwölf.
+      const tiny = inputs.map((c) => ({ ...c, amount_rappen: 1 })),
+        roundId = randomUUID();
+      await as(owner, sql, [
+        gid,
+        roundId,
+        ownerMember,
+        10,
+        3,
+        date,
+        JSON.stringify(tiny),
+        "Rundung",
+      ]);
+      const rounded = await as<{
+        member_id: string;
+        allocated_seconds: number;
+      }>(
+        owner,
+        "select * from public.package_contributions where package_id=$1",
+        [roundId],
+      );
+      for (const c of rounded)
+        assert.equal(
+          Number(c.allocated_seconds),
+          allocateMinutes(10, 3, tiny).find((x) => x.member_id === c.member_id)!
+            .minutes * 60,
+        );
+      assert.equal(
+        rounded.reduce((n, c) => n + Number(c.allocated_seconds), 0),
+        600,
+      );
+      const invalid = randomUUID();
+      for (const bad of [
+        inputs.slice(0, 1),
+        [inputs[0], inputs[0]],
+        [{ member_id: ownerMember, amount_rappen: -9000 }],
+        [{ member_id: randomUUID(), amount_rappen: 9000 }],
+      ]) {
+        await assert.rejects(() =>
+          as(owner, sql, [
+            gid,
+            invalid,
+            ownerMember,
+            600,
+            9000,
+            date,
+            JSON.stringify(bad),
+            "Ungültig",
+          ]),
+        );
+        assert.equal(
+          (
+            await as(owner, "select * from public.packages where id=$1", [
+              invalid,
+            ])
+          ).length,
+          0,
+        );
+        assert.equal(
+          (
+            await as(
+              owner,
+              "select * from public.minute_entries where package_id=$1",
+              [invalid],
+            )
+          ).length,
+          0,
+        );
+      }
+      await as(owner, sql, [
+        gid,
+        invalid,
+        ownerMember,
+        600,
+        9000,
+        date,
+        JSON.stringify(inputs),
+        "Jetzt gültig",
+      ]);
+      const [snap] = await as<{ value: { contributions: unknown[] } }>(
+        owner,
+        "select public.get_dashboard($1) as value",
+        [gid],
+      );
+      assert.equal(snap.value.contributions.length, 9);
+      // Keine Berechtigung für eine fremde Gruppe: weder Beiträge noch Snapshot.
+      const unknown = randomUUID();
+      await db.exec("reset role");
+      await db.query("insert into auth.users values($1)", [unknown]);
+      assert.equal(
+        (await as(unknown, "select * from public.package_contributions"))
+          .length,
+        0,
+      );
     },
   );
   await db.close();

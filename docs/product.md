@@ -33,15 +33,17 @@ Ein Admin storniert fehlerhafte Fahrten mit Grund. Unter **Fahrten → Status �
 
 ## Seiten
 
-| Seite      | Inhalt                                                                                                                       |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Übersicht  | Eigenes Guthaben, Monatsverbrauch, gemeinsamer Paketbestand, Verlauf der letzten 14 Tage, Crew-Vergleich und letzte Fahrten. |
-| Fahrten    | Filter nach Person und Zeitraum, getrennte Fahr-/Pausenzeiten, Verbrauch, geschätzte Kosten und gegebenenfalls Storno.       |
-| Guthaben   | Persönliche Salden, nicht zugewiesene Minuten, Paketkäufe und Journal; Admin-Formulare für Gutschriften und Käufe.           |
-| Statistik  | Fahrtenzahl, Verbrauch, Durchschnitt, Personenvergleich sowie geschätzter Verbrauchswert und offene Kostenbewertungen.       |
-| Mitglieder | Mitgliederliste, Rollen, Aktivstatus und zeitlich begrenzte Einladungen.                                                     |
+| Seite      | Inhalt                                                                                                                                                                                                          |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Übersicht  | Eigenes Restguthaben, eigener bisheriger Verbrauch, gemeinsamer Paketrest, Restguthaben der anderen und überlagerte Balken für Kontingent/Verbrauch. Zusätzlich Verlauf der letzten 14 Tage und letzte Fahrten. |
+| Fahrten    | Filter nach Person und Zeitraum, getrennte Fahr-/Pausenzeiten, Verbrauch, geschätzte Kosten und gegebenenfalls Storno.                                                                                          |
+| Guthaben   | Persönliche Salden, nicht zugewiesene Minuten, Paketkäufe mit Beiträgen und Minutenanteilen sowie Journal; gemeinsame Aufladung und kostenlose manuelle Gutschriften.                                           |
+| Statistik  | Fahrtenzahl, Verbrauch, Durchschnitt, Personenvergleich sowie geschätzter Verbrauchswert und offene Kostenbewertungen.                                                                                          |
+| Mitglieder | Mitgliederliste, Rollen, Aktivstatus und zeitlich begrenzte Einladungen.                                                                                                                                        |
 
-Paketkäufe und interne Gutschriften bleiben getrennte Aktionen. Die CHF-Verbrauchswerte beruhen auf einem gespeicherten gewichteten Paketpreis, sind sichtbar geschätzt und stellen keine Schuldenabrechnung dar. Details: [Datenmodell](data-model.md).
+Bei **Guthaben aufladen** werden Minutenmenge, positiver Gesamtpreis und CHF-Beiträge pro Person erfasst. Die Beiträge müssen genau den Preis ergeben. Paket, Beiträge und proportionale Minutengutschriften entstehen gemeinsam in einer Transaktion. Die Vorschau und die Datenbank verwenden dieselbe Regel für ganze Minuten: zuerst abrunden, dann Restminuten nach grösstem Nachkommaanteil, bei Gleichstand nach fester Mitglieds-ID. Ältere Käufe behalten ihre bestehende Verteilung; Beiträge werden nicht nachträglich erfunden.
+
+Kostenlose manuelle Gutschriften bleiben als gesonderte Admin-Aktion verfügbar. Das Kontingent im Diagramm ist die Summe aller Gutschriften; Stornos werden daraus ausgeschlossen, weil sie nur Verbrauch rückgängig machen. Die CHF-Verbrauchswerte beruhen auf einem gespeicherten gewichteten Paketpreis, sind sichtbar geschätzt und stellen keine Schuldenabrechnung dar. Details: [Datenmodell](data-model.md).
 
 ## iPhone und Synchronisierung
 

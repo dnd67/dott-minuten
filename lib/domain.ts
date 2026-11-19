@@ -29,6 +29,7 @@ export type Entry = {
   seconds: number;
   kind: "credit" | "ride" | "reversal";
   ride_id: string | null;
+  package_id?: string | null;
   reason: string;
   created_at: string;
 };
@@ -41,22 +42,35 @@ export type Package = {
   purchased_at: string;
   note: string;
 };
+export type Contribution = {
+  id: string;
+  group_id: string;
+  package_id: string;
+  member_id: string;
+  amount_rappen: number;
+  allocated_seconds: number;
+};
 export type Snapshot = {
   group: Group;
   members: Member[];
   rides: Ride[];
   entries: Entry[];
   packages: Package[];
+  contributions?: Contribution[];
 };
 export type Action =
   | "record_ride"
   | "credit_minutes"
   | "record_package"
+  | "record_topup"
   | "void_ride"
   | "rename_member"
   | "update_member"
   | "create_invite";
-export type RpcArgs = Record<string, string | number | boolean>;
+export type RpcArgs = Record<
+  string,
+  string | number | boolean | ContributionInput[]
+>;
 export const minutes = (seconds: number) =>
   new Intl.NumberFormat("de-CH", { maximumFractionDigits: 1 }).format(
     seconds / 60,
@@ -109,6 +123,11 @@ export function summary(data: Snapshot, memberId?: string) {
     rides,
     balance,
     consumed,
+    quota: data.entries
+      .filter(
+        (e) => (!memberId || e.member_id === memberId) && e.kind === "credit",
+      )
+      .reduce((n, e) => n + Number(e.seconds), 0),
     drive: rides.reduce((n, r) => n + r.duration_seconds, 0),
     pause: rides.reduce((n, r) => n + r.pause_seconds, 0),
     bought,
@@ -136,4 +155,70 @@ export function rideDraft(drive: string, pause: string) {
     charged_seconds: duration_seconds + pause_seconds,
     source: "manual" as const,
   };
+}
+
+export type ContributionInput = { member_id: string; amount_rappen: number };
+/** Ganze Minuten nach grösstem Rest. BigInt verhindert Rundungsfehler bei hohen Beträgen. */
+export function allocateMinutes(
+  totalMinutes: number,
+  priceRappen: number,
+  inputs: ContributionInput[],
+) {
+  if (
+    !Number.isSafeInteger(totalMinutes) ||
+    totalMinutes < 1 ||
+    totalMinutes > 10_000_000 ||
+    !Number.isSafeInteger(priceRappen) ||
+    priceRappen < 1 ||
+    priceRappen > 1_000_000_000_000
+  )
+    throw new Error(
+      "Bitte gültige Paketminuten und einen positiven Preis eingeben.",
+    );
+  if (
+    !inputs.length ||
+    new Set(inputs.map((c) => c.member_id)).size !== inputs.length
+  )
+    throw new Error("Jede Person darf nur einmal beitragen.");
+  if (
+    inputs.some(
+      (c) =>
+        !Number.isSafeInteger(c.amount_rappen) ||
+        c.amount_rappen < 0 ||
+        c.amount_rappen > priceRappen,
+    )
+  )
+    throw new Error("Bitte gültige Beiträge eingeben.");
+  if (
+    inputs.reduce((n, c) => n + BigInt(c.amount_rappen), 0n) !==
+    BigInt(priceRappen)
+  )
+    throw new Error(
+      "Die Summe aller Beiträge muss genau dem Paketpreis entsprechen.",
+    );
+  const price = BigInt(priceRappen),
+    total = BigInt(totalMinutes);
+  const shares = inputs.map((c) => ({
+    ...c,
+    minutes: Number((total * BigInt(c.amount_rappen)) / price),
+    remainder: (total * BigInt(c.amount_rappen)) % price,
+  }));
+  const missing = totalMinutes - shares.reduce((n, c) => n + c.minutes, 0);
+  const ranked = [...shares].sort((a, b) =>
+    a.remainder === b.remainder
+      ? a.member_id < b.member_id
+        ? -1
+        : a.member_id > b.member_id
+          ? 1
+          : 0
+      : a.remainder > b.remainder
+        ? -1
+        : 1,
+  );
+  for (let i = 0; i < missing; i++) ranked[i].minutes++;
+  return shares.map(({ member_id, amount_rappen, minutes }) => ({
+    member_id,
+    amount_rappen,
+    minutes,
+  }));
 }

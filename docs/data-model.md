@@ -1,18 +1,19 @@
 # Datenmodell und Abrechnung
 
-[Zur Übersicht](../README.md) · [Grundschema](../supabase/migrations/202611180001_initial.sql) · [Ergänzung für Namen und Storno-Verlauf](../supabase/migrations/202611190001_names_and_cancellations.sql)
+[Zur Übersicht](../README.md) · [Grundschema](../supabase/migrations/202611180001_initial.sql) · [Namen und Storno-Verlauf](../supabase/migrations/202611190001_names_and_cancellations.sql) · [Gemeinsame Aufladung](../supabase/migrations/202611190002_shared_topups.sql)
 
 ## Implementierte Tabellen
 
-| Tabelle                | Zweck                                                                                                                     |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `groups`               | Gemeinsamer Club, Ersteller und Schlüssel zur wiederholbaren Erstellung                                                   |
-| `memberships`          | Persönlicher Auth-Zugang, Anzeigename, Gruppe, Rolle und Aktivstatus                                                      |
-| `invitations`          | Zufälliger Einladungscode, Gruppe und Ablauf nach sieben Tagen                                                            |
-| `rides`                | Fahrer, Zeitpunkt, Fahrsekunden, Pausensekunden, Summe, Herkunft, Regelversion, optionale Kostenschätzung und Stornierung |
-| `minute_entries`       | Unveränderliche Gutschriften, Fahrtverbräuche und Gegenbuchungen mit Grund und Ersteller                                  |
-| `packages`             | Tatsächlich erfasste Käufe: Minuten, Preis in Rappen, Käufer, Zeitpunkt und Notiz                                         |
-| `app_private.commands` | Idempotenzschlüssel mit Aktion und Nutzdaten; für Browser nicht lesbar                                                    |
+| Tabelle                 | Zweck                                                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `groups`                | Gemeinsamer Club, Ersteller und Schlüssel zur wiederholbaren Erstellung                                                   |
+| `memberships`           | Persönlicher Auth-Zugang, Anzeigename, Gruppe, Rolle und Aktivstatus                                                      |
+| `invitations`           | Zufälliger Einladungscode, Gruppe und Ablauf nach sieben Tagen                                                            |
+| `rides`                 | Fahrer, Zeitpunkt, Fahrsekunden, Pausensekunden, Summe, Herkunft, Regelversion, optionale Kostenschätzung und Stornierung |
+| `minute_entries`        | Unveränderliche Gutschriften, Fahrtverbräuche und Gegenbuchungen mit Grund und Ersteller                                  |
+| `package_contributions` | CHF-Beitrag und Minutenanteil je Paket und Mitglied; RLS wie Gruppendaten                                                 |
+| `packages`              | Tatsächlich erfasste Käufe: Minuten, Preis in Rappen, Käufer, Zeitpunkt und Notiz                                         |
+| `app_private.commands`  | Idempotenzschlüssel mit Aktion und Nutzdaten; für Browser nicht lesbar                                                    |
 
 Tabellenbeziehungen sichern Gruppenidentität und Personenbezüge über zusammengesetzte Fremdschlüssel ab. Alle öffentlichen Tabellen sind durch RLS geschützt. Schreibrechte existieren ausschliesslich über die vorgesehenen RPCs.
 
@@ -44,9 +45,19 @@ Interne Gutschriften sind frei wählbare positive Ganzminutenbeträge bis zur te
 
 Version 1 bietet keine negativen administrativen Guthabenkorrekturen, Minutenübertragungen oder Paketkorrekturen. Diese benötigen eigene Gegenbuchungsfunktionen und sind als Erweiterung vorgemerkt. Im täglichen Betrieb echte Käufe und Gutschriften vor dem Speichern prüfen; Testeinträge gehören in ein separates Projekt oder die Demo.
 
+## Gemeinsame Aufladung nach Beiträgen
+
+Die RPC `record_topup` prüft Admin-Rechte, aktive Mitglieder derselben Gruppe, eindeutige Beitragszeilen, ganze nicht negative Rappenbeträge und einen positiven Paketpreis. Alle Beiträge müssen zusammen den Preis ergeben. Sie legt Paket und Beitragszeilen an und schreibt die entsprechenden Minuten über `minute_entries` gut. `minute_entries.package_id` stellt die Verbindung her. Nullbeiträge sind erlaubt; Null-Minuten-Anteile erzeugen keinen Journalbetrag.
+
+Die Minutenzuteilung entspricht `Paketminuten × Beitrag / Paketpreis`. Zunächst wird je Person auf ganze Minuten abgerundet. Die übrigen Minuten erhalten die grössten Nachkommareste, bei Gleichstand die niedrigere feste Mitglieds-ID. Die Summe entspricht exakt den gekauften Minuten. Die Datenbank verwendet exakte Dezimalrechnung, die Vorschau BigInt-Brüche. Beispiel: 600 Minuten für CHF 90, Beiträge 30/45/15 → 200/300/100 Minuten.
+
+Kauf, Beiträge, Gutschriften und Idempotenz sind eine gemeinsame Transaktion. Ein fehlerhafter oder nur teilweise finanzierter Kauf speichert nichts. Der alte RPC `record_package` bleibt für Kompatibilität bestehen; die aktuelle Aufladeoberfläche verwendet ausschliesslich `record_topup`. Für ältere Käufe ohne Beitragsdaten werden keine Zahlungen oder zusätzlichen Gutschriften erfunden.
+
+Das Diagramm verwendet `Kontingent = Summe aller credit-Einträge`, `Verbrauch = aktive Fahrten` und `Restguthaben = gesamtes Journal`. Gegenbuchungen von Stornos erhöhen nicht das Kontingent. Überschreitet der Verbrauch das Kontingent, wird der dunkle Balken höher als der transparente und der negative Rest sichtbar.
+
 ## Kostenübersicht
 
-CHF-Eingaben werden exakt in ganze Rappen umgerechnet. Paketkäufe dokumentieren, wer bezahlt hat. Sie verteilen keine persönlichen Minuten automatisch und lösen keine Zahlungen aus.
+CHF-Eingaben werden exakt in ganze Rappen umgerechnet. Paketkäufe dokumentieren, wer bezahlt hat. Gemeinsame Aufladungen verteilen persönliche Minuten automatisch nach den dokumentierten Beiträgen; sie lösen keine tatsächlichen Überweisungen aus. Kostenlose manuelle Gutschriften kaufen keine Pakete.
 
 Die Fahrtkosten sind **ausschliesslich eine Schätzung**. Bei Erfassung einer Fahrt bestimmt die Datenbank den gewichteten Preis sämtlicher bereits erfasster Pakete mit Kaufzeitpunkt vor oder gleich dem Fahrtzeitpunkt:
 
@@ -63,4 +74,4 @@ Es gibt keine belegte Zuordnung von Fahrten zu bestimmten Dott-Paketen und keine
 
 ## Grenzen und spätere Erweiterungen
 
-Noch nicht angelegt sind Bildspeicher, Upload-Aufträge, OCR-Ergebnisse, zusätzliche Beitragszahlungen und Paketverbrauchszuordnungen. Die SQL-Spalte `source` ist vorbereitet, erlaubt per Constraint aber zunächst ausschliesslich `manual`. Erst eine eigene Migration und geprüfte serverseitige Verarbeitung dürfen `ocr` freigeben. Deaktivierung erhält die Historie; Kontolöschung und Anonymisierung benötigen später einen separaten Ablauf.
+Noch nicht angelegt sind Bildspeicher, Upload-Aufträge, OCR-Ergebnisse, zusätzliche paketunabhängige Zahlungen und konkrete Dott-Paketverbrauchszuordnungen. Die SQL-Spalte `source` ist vorbereitet, erlaubt per Constraint aber zunächst ausschliesslich `manual`. Erst eine eigene Migration und geprüfte serverseitige Verarbeitung dürfen `ocr` freigeben. Deaktivierung erhält die Historie; Kontolöschung und Anonymisierung benötigen später einen separaten Ablauf.
