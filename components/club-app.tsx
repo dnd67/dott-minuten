@@ -348,24 +348,13 @@ export function ClubApp() {
       </div>
       <div className="entry-layout">
         <section className="entry-intro">
-          <span className="eyebrow">ZUSAMMEN WEITERKOMMEN</span>
           <h1>
-            Eure Crew.
-            <br />
-            Eure Minuten.
-            <br />
-            <span>Alles im Blick.</span>
+            Euer gemeinsames <span>Minutenkonto.</span>
           </h1>
           <p>
-            Weniger Kopfrechnen, mehr unterwegs sein. Teilt eure Minutenpakete
-            und behaltet gemeinsam den Überblick.
+            Teilt eure Dott-Minutenpakete, erfasst Fahrten und seht, wie viele
+            Minuten euch in Zürich noch bleiben.
           </p>
-          <div className="entry-people">
-            <span className="avatar av-0">O</span>
-            <span className="avatar av-1">A</span>
-            <span className="avatar av-2">M</span>
-            <span>Ein Konto für die ganze Crew.</span>
-          </div>
         </section>
         <section className="entry-card">
           {error && (
@@ -377,8 +366,7 @@ export function ClubApp() {
             <Loading />
           ) : !client && !demo ? (
             <>
-              <span className="eyebrow">BEREIT FÜR EURE CREW</span>
-              <h2>Das ist euer Minutenclub.</h2>
+              <h2>Minutenclub ausprobieren</h2>
               <p>
                 Probiert die App mit Beispieldaten aus. Für eure gemeinsamen
                 Daten verbindet ihr sie einmal mit Supabase.
@@ -434,7 +422,6 @@ export function ClubApp() {
         </section>
       </div>
       <footer className="entry-footer">
-        Für gemeinsame Wege in Zürich.{" "}
         <span>Unabhängiges Projekt · Keine Verbindung zu Dott</span>
       </footer>
     </main>
@@ -462,8 +449,7 @@ function AuthForm({
     [error, setError] = useState("");
   return (
     <>
-      <span className="eyebrow">WILLKOMMEN ZURÜCK</span>
-      <h2>Steig wieder ein.</h2>
+      <h2>{sent ? "Anmeldecode eingeben" : "Anmelden"}</h2>
       <p>
         Melde dich mit deiner eigenen E-Mail-Adresse an. Du erhältst einen
         einmaligen Anmeldecode per E-Mail.
@@ -578,7 +564,6 @@ function GroupSetup({
   const [join, setJoin] = useState(false);
   return (
     <>
-      <span className="eyebrow">GEMEINSAM STARTEN</span>
       <h2>{join ? "Zu eurer Crew." : "Gründe euren Club."}</h2>
       <p>
         {join

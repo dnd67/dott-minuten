@@ -17,6 +17,7 @@ import {
   Plus,
   RefreshCw,
   ShieldCheck,
+  Ticket,
   TrendingUp,
   Users,
   Wallet,
@@ -139,6 +140,10 @@ export function Dashboard(p: Props) {
   const rank = data.members
     .map((m) => ({ ...m, ...summary(data, m.id) }))
     .sort((a, b) => b.consumed - a.consumed);
+  function navigate(next: Tab) {
+    setTab(next);
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
   function open(value: Modal) {
     p.onBeginAction();
     setModal(value);
@@ -319,7 +324,7 @@ export function Dashboard(p: Props) {
           href="/"
           onClick={(e) => {
             e.preventDefault();
-            setTab("overview");
+            navigate("overview");
           }}
         >
           <span className="brand-icon">
@@ -350,13 +355,13 @@ export function Dashboard(p: Props) {
           </div>
           <ChevronDown size={14} />
         </div>
-        <div className="nav-label">DEIN ÜBERBLICK</div>
         <nav aria-label="Hauptnavigation">
           {tabs.map((t) => (
             <button
               key={t.id}
               className={`nav-item ${tab === t.id ? "active" : ""}`}
-              onClick={() => setTab(t.id)}
+              aria-current={tab === t.id ? "page" : undefined}
+              onClick={() => navigate(t.id)}
             >
               <t.icon size={19} />
               <span>{t.label}</span>
@@ -364,15 +369,6 @@ export function Dashboard(p: Props) {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="sidebar-tip">
-            <span>Gute Fahrt. Gemeinsam.</span>
-            <p>
-              Fahrzeit + Pause = Verbrauch.
-              <br />
-              So einfach bleibt’s fair.
-            </p>
-            <Zap size={27} />
-          </div>
           <button className="profile" onClick={p.onLogout} disabled={p.busy}>
             {avatar(me)}
             <span>
@@ -388,7 +384,7 @@ export function Dashboard(p: Props) {
       <div className="main-shell">
         <header className="topbar">
           <span className="breadcrumb">
-            Euer Club <span>/</span>{" "}
+            {data.group.name} <span>/</span>{" "}
             <strong>{tabs.find((t) => t.id === tab)?.label}</strong>
           </span>
           <div className="topbar-right">
@@ -420,15 +416,6 @@ export function Dashboard(p: Props) {
           </div>
         </header>
         <main className="main-content">
-          {p.demo && (
-            <div className="demo-notice">
-              <span>
-                <strong>Demo-Modus</strong> · Beispieldaten, nur auf diesem
-                Gerät gespeichert.
-              </span>
-              <button onClick={p.onResetDemo}>Zurücksetzen</button>
-            </div>
-          )}
           {!p.online && (
             <div className="notice" role="status">
               <WifiOff size={18} />
@@ -449,15 +436,6 @@ export function Dashboard(p: Props) {
               <div>
                 <span className="eyebrow">{data.group.name.toUpperCase()}</span>
                 <h1>{tabs.find((t) => t.id === tab)?.label}</h1>
-                <p>
-                  {tab === "rides"
-                    ? "Alle Wege, fair und nachvollziehbar erfasst."
-                    : tab === "balance"
-                      ? "Eure Minuten und Paketkäufe an einem Ort."
-                      : tab === "stats"
-                        ? "So viel ist eure Crew unterwegs."
-                        : "Gemeinsam fahren. Gemeinsam den Überblick behalten."}
-                </p>
               </div>
               {rideButton}
             </div>
@@ -465,67 +443,75 @@ export function Dashboard(p: Props) {
           {tab === "overview" && (
             <>
               <h1 className="overview-heading">
-                Hoi {me?.display_name ?? "zusammen"} 👋
+                Hoi {me?.display_name ?? "zusammen"}
               </h1>
-              <section
-                className="balance-card"
-                aria-labelledby="personal-balance"
-              >
-                <div>
-                  <h2 id="personal-balance">Dein Restguthaben</h2>
-                  <p className="balance-number">
-                    <strong>{minutes(own.balance)}</strong>{" "}
-                    <span>
-                      {own.balance < 0 ? "Minuten · im Minus" : "Minuten übrig"}
-                    </span>
-                  </p>
-                </div>
-                {rideButton}
-              </section>
-              <section className="metric-grid overview-metrics">
-                <Metric
-                  icon={<Clock3 size={20} />}
-                  label="Von dir verbraucht"
-                  value={minutes(own.consumed)}
-                  unit="Minuten"
-                  note="Seit deinem Start · inklusive Pausen"
-                />
-                <Metric
-                  icon={<Users size={20} />}
-                  label="Gemeinsamer Bestand"
-                  value={minutes(all.inventory)}
-                  unit="Minuten"
-                  note={
-                    all.inventory < 0
-                      ? "Abweichung: Paketkäufe prüfen"
-                      : "Aus erfassten Käufen und Fahrten"
-                  }
-                />
-              </section>
-              <section className="panel quota-panel">
-                <PanelHeading
-                  title="Kontingent & Verbrauch"
-                  description="Heller Balken: insgesamt zugeteilte Minuten. Dunkler Balken: bereits verbraucht."
-                />
-                <QuotaChart data={data} />
-              </section>
-              <section className="middle-grid">
-                <div className="panel activity-panel">
-                  <PanelHeading
-                    title="Gemeinsam unterwegs"
-                    description="Minutenverbrauch eurer Crew"
-                    aside={<span className="subtle-pill">Letzte 14 Tage</span>}
+              <div className="overview-summary">
+                <section
+                  className="balance-card"
+                  aria-labelledby="personal-balance"
+                >
+                  <div>
+                    <h2 id="personal-balance">
+                      <Ticket aria-hidden="true" size={21} /> Dein Restguthaben
+                    </h2>
+                    <p className="balance-number">
+                      <strong>{minutes(own.balance)}</strong>{" "}
+                      <span>
+                        {own.balance < 0
+                          ? "Minuten · im Minus"
+                          : "Minuten übrig"}
+                      </span>
+                    </p>
+                  </div>
+                  <div className="pass-stub">
+                    <div className="pass-quota">
+                      <span>Dein Kontingent</span>
+                      <strong>{minutes(own.quota)} Min.</strong>
+                      <div className="pass-track" aria-hidden="true">
+                        <i
+                          style={{
+                            width: `${own.quota > 0 ? Math.min(100, Math.max(0, (own.balance / own.quota) * 100)) : 0}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                    {rideButton}
+                  </div>
+                </section>
+                <section className="metric-grid overview-metrics">
+                  <Metric
+                    icon={<Clock3 size={20} />}
+                    label="Von dir verbraucht"
+                    value={minutes(own.consumed)}
+                    unit="Minuten"
+                    note="Inklusive Pausen"
                   />
-                  <ActivityChart rides={all.rides} />
-                </div>
+                  <Metric
+                    icon={<Users size={20} />}
+                    label="Gemeinsamer Bestand"
+                    value={minutes(all.inventory)}
+                    unit="Minuten"
+                    note={
+                      all.inventory < 0
+                        ? "Paketkäufe prüfen"
+                        : "Für die ganze Gruppe übrig"
+                    }
+                  />
+                </section>
+              </div>
+              <div className="middle-grid">
+                <section className="panel quota-panel">
+                  <PanelHeading title="Kontingent & Verbrauch" />
+                  <QuotaChart data={data} />
+                </section>
                 <div className="panel crew-panel">
                   <PanelHeading
                     title="Eure Crew"
-                    description="So viele Minuten hat jede Person noch übrig."
+                    description="Verbleibende Minuten pro Person"
                     aside={
                       <button
                         className="icon-button"
-                        onClick={() => setTab("members")}
+                        onClick={() => navigate("members")}
                         aria-label="Mitglieder öffnen"
                       >
                         <ArrowUpRight size={19} />
@@ -562,7 +548,16 @@ export function Dashboard(p: Props) {
                     <strong>{minutes(all.balance)} Min.</strong>
                   </div>
                 </div>
-              </section>
+              </div>
+              <div className="panel activity-panel">
+                <PanelHeading
+                  title="Gemeinsam unterwegs"
+                  description="Minutenverbrauch eurer Crew"
+                  aside={<span className="subtle-pill">Letzte 14 Tage</span>}
+                />
+                <ActivityChart rides={all.rides} />
+              </div>
+
               <section className="panel">
                 <PanelHeading
                   title="Letzte Fahrten"
@@ -570,7 +565,7 @@ export function Dashboard(p: Props) {
                   aside={
                     <button
                       className="text-link"
-                      onClick={() => setTab("rides")}
+                      onClick={() => navigate("rides")}
                     >
                       Alle ansehen <ArrowRight size={15} />
                     </button>
@@ -578,13 +573,6 @@ export function Dashboard(p: Props) {
                 />
                 {table(sorted.slice(0, 5), true)}
               </section>
-              <div className="bottom-note">
-                <ShieldCheck size={16} />
-                <span>
-                  Jede Buchung bleibt nachvollziehbar. Fahrzeit und Pause zählen
-                  zusammen.
-                </span>
-              </div>
             </>
           )}
           {tab === "rides" && (
@@ -1083,11 +1071,16 @@ export function Dashboard(p: Props) {
               </section>
             </>
           )}
+          {p.demo && (
+            <div className="demo-notice">
+              <span>
+                <strong>Demo-Modus</strong> · Beispieldaten, nur auf diesem
+                Gerät gespeichert.
+              </span>
+              <button onClick={p.onResetDemo}>Zurücksetzen</button>
+            </div>
+          )}
           <footer className="app-footer">
-            <span>
-              minutenclub<span className="brand-dot">.</span>{" "}
-              <span>Gemeinsam unterwegs.</span>
-            </span>
             <span>
               {p.demo
                 ? "Beispieldaten"
@@ -1103,7 +1096,8 @@ export function Dashboard(p: Props) {
         {tabs.map((t) => (
           <button
             key={t.id}
-            onClick={() => setTab(t.id)}
+            aria-current={tab === t.id ? "page" : undefined}
+            onClick={() => navigate(t.id)}
             className={tab === t.id ? "active" : ""}
           >
             <t.icon size={20} />
@@ -1308,11 +1302,11 @@ function EntryDialog({
   }, []);
   const title =
     kind === "ride"
-      ? "Deine nächste Fahrt."
+      ? "Fahrt eintragen"
       : kind === "credit"
         ? "Minuten gutschreiben."
         : kind === "package"
-          ? "Gemeinsam aufladen."
+          ? "Guthaben aufladen"
           : kind === "rename"
             ? "Name ändern."
             : "Fahrt stornieren.";
@@ -1401,7 +1395,15 @@ function EntryDialog({
           <X size={22} />
         </button>
         <span className="dialog-icon">
-          {kind === "ride" ? <Zap size={24} /> : <Wallet size={24} />}
+          {kind === "ride" ? (
+            <Zap size={24} />
+          ) : kind === "void" ? (
+            <History size={24} />
+          ) : kind === "rename" ? (
+            <Users size={24} />
+          ) : (
+            <Wallet size={24} />
+          )}
         </span>
         <h2 id="dialog-title">{title}</h2>
         <p>{description}</p>
@@ -1625,7 +1627,10 @@ function EntryDialog({
             >
               Abbrechen
             </button>
-            <button className="button primary" disabled={busy}>
+            <button
+              className={`button ${kind === "void" ? "destructive" : "primary"}`}
+              disabled={busy}
+            >
               {busy ? (
                 <LoaderCircle size={18} className="spin" />
               ) : (
@@ -1689,9 +1694,8 @@ function QuotaChart({ data }: { data: Snapshot }) {
         ))}
       </div>
       <p className="panel-footnote">
-        Kontingent = alle gutgeschriebenen Minuten. Stornierte Fahrten zählen
-        nicht als Verbrauch. Gleiche Skala für alle Personen; bei Überzug ragt
-        der Verbrauch über das Kontingent hinaus.
+        Alle Balken haben dieselbe Skala. Stornierte Fahrten sind
+        herausgerechnet.
       </p>
     </div>
   );
