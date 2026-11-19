@@ -51,65 +51,77 @@ export function LocationStats({
       <section className="panel">
         <div className="panel-heading">
           <div>
-            <h2>Um welche Uhrzeit seid ihr unterwegs?</h2>
+            <h2>Strecken-Bestzeiten · Wer ist am schnellsten?</h2>
             <p>
-              {insights.totalRides > 0 && insights.peakDayPart
-                ? `Schwerpunkt am ${insights.peakDayPart.label} (${insights.peakDayPart.range}) mit ${insights.peakDayPart.count} Fahrten${insights.peakHour ? ` · Spitzenstunde ${insights.peakHour}` : ""}.`
-                : "Sobald Fahrten im gewählten Zeitraum vorliegen, erscheint hier die Verteilung über den Tag."}
+              Vergleich der schnellsten Fahrzeiten pro Strecke (Start → Ziel).
+              Bei geteilten Fahrten zählt die volle Scooter-Fahrzeit.
             </p>
           </div>
-          <span className="subtle-pill">Zürich-Zeit · 24h</span>
+          <span className="subtle-pill">
+            <Trophy size={13} /> Rekorde
+          </span>
         </div>
 
-        <div
-          className="hour-chart"
-          role="img"
-          aria-label={`Fahrten nach Uhrzeit: ${
-            insights.hourly
-              .filter((h) => h.count > 0)
-              .map((h) => `${h.label} Uhr: ${h.count} Fahrten`)
-              .join(", ") || "keine Fahrten"
-          }`}
-        >
-          <div className="hour-bars">
-            {insights.hourly.map((h) => (
-              <div className="hour-col" key={h.hour}>
-                <div className="hour-bar-track">
-                  <div
-                    className={`hour-bar ${h.count === maxHourCount && h.count > 0 ? "peak" : ""}`}
-                    style={{
-                      height: `${(h.count / maxHourCount) * 100}%`,
-                      minHeight: h.count > 0 ? 4 : 0,
-                    }}
-                    title={`${h.label}:00–${h.label}:59 Uhr: ${h.count} Fahrten (${minutes(h.seconds)} Min.)`}
-                  />
+        {insights.routeRecords.length === 0 ? (
+          <div className="empty">
+            <span className="empty-icon">
+              <Trophy size={23} />
+            </span>
+            <h3>Noch keine kompletten Strecken</h3>
+            <p>
+              Sobald Fahrten sowohl einen Start- als auch einen Zielort haben,
+              erscheint hier die Bestzeiten-Rangliste.
+            </p>
+          </div>
+        ) : (
+          <div className="route-records-list">
+            {insights.routeRecords.map((route) => (
+              <div className="route-record-card" key={route.key}>
+                <div className="route-record-head">
+                  <div>
+                    <strong className="route-record-title">
+                      {route.startLabel} → {route.endLabel}
+                    </strong>
+                    <small>
+                      {route.tripCount}{" "}
+                      {route.tripCount === 1 ? "Fahrt" : "Fahrten"} · Ø{" "}
+                      {minutes(route.avgSeconds)} Min.
+                    </small>
+                  </div>
+                  <span className="record-winner-pill">
+                    <Trophy size={14} /> {route.fastest.memberNames} ·{" "}
+                    {minutes(route.fastest.seconds)} Min.
+                  </span>
                 </div>
-                <span className={h.hour % 3 === 0 ? "" : "hidden-label"}>
-                  {h.label}
-                </span>
+                <div className="route-leaderboard">
+                  {route.leaderboard.map((entry, idx) => {
+                    const m = members.find((x) => x.id === entry.memberId);
+                    return (
+                      <span
+                        className={`rider-chip ${idx === 0 ? "fastest-chip" : ""}`}
+                        key={entry.memberId}
+                        title={`Bestzeit ${minutes(entry.bestSeconds)} Min. · Durchschnitt ${minutes(entry.avgSeconds)} Min. (${entry.count}×)`}
+                      >
+                        <strong className="rank-num">#{idx + 1}</strong>
+                        {renderAvatar(m, "tiny")}
+                        <span>
+                          {entry.name}{" "}
+                          <strong>{minutes(entry.bestSeconds)} Min.</strong>{" "}
+                          <small>({entry.count}×)</small>
+                        </span>
+                      </span>
+                    );
+                  })}
+                </div>
+                <small className="route-record-date">
+                  Streckenrekord aufgestellt am{" "}
+                  {dateLabel(route.fastest.occurredAt, true)}
+                  {route.fastest.shared ? " (geteilte Fahrt)" : ""}
+                </small>
               </div>
             ))}
           </div>
-        </div>
-
-        <div className="daypart-grid">
-          {insights.dayParts.map((part) => (
-            <div
-              key={part.id}
-              className={`daypart-card ${insights.peakDayPart?.id === part.id && part.count > 0 ? "active" : ""}`}
-            >
-              <div className="daypart-top">
-                <strong>{part.label}</strong>
-                <small>{part.range}</small>
-              </div>
-              <div className="daypart-value">
-                <strong>{part.count}</strong>{" "}
-                <span>{part.count === 1 ? "Fahrt" : "Fahrten"}</span>
-              </div>
-              <small>{minutes(part.seconds)} Min. gesamt</small>
-            </div>
-          ))}
-        </div>
+        )}
       </section>
 
       <section className="panel">
@@ -191,77 +203,65 @@ export function LocationStats({
       <section className="panel">
         <div className="panel-heading">
           <div>
-            <h2>Strecken-Bestzeiten · Wer ist am schnellsten?</h2>
+            <h2>Um welche Uhrzeit seid ihr unterwegs?</h2>
             <p>
-              Vergleich der schnellsten Fahrzeiten pro Strecke (Start → Ziel).
-              Bei geteilten Fahrten zählt die volle Scooter-Fahrzeit.
+              {insights.totalRides > 0 && insights.peakDayPart
+                ? `Schwerpunkt am ${insights.peakDayPart.label} (${insights.peakDayPart.range}) mit ${insights.peakDayPart.count} Fahrten${insights.peakHour ? ` · Spitzenstunde ${insights.peakHour}` : ""}.`
+                : "Sobald Fahrten im gewählten Zeitraum vorliegen, erscheint hier die Verteilung über den Tag."}
             </p>
           </div>
-          <span className="subtle-pill">
-            <Trophy size={13} /> Rekorde
-          </span>
+          <span className="subtle-pill">Zürich-Zeit · 24h</span>
         </div>
 
-        {insights.routeRecords.length === 0 ? (
-          <div className="empty">
-            <span className="empty-icon">
-              <Trophy size={23} />
-            </span>
-            <h3>Noch keine kompletten Strecken</h3>
-            <p>
-              Sobald Fahrten sowohl einen Start- als auch einen Zielort haben,
-              erscheint hier die Bestzeiten-Rangliste.
-            </p>
-          </div>
-        ) : (
-          <div className="route-records-list">
-            {insights.routeRecords.map((route) => (
-              <div className="route-record-card" key={route.key}>
-                <div className="route-record-head">
-                  <div>
-                    <strong className="route-record-title">
-                      {route.startLabel} → {route.endLabel}
-                    </strong>
-                    <small>
-                      {route.tripCount}{" "}
-                      {route.tripCount === 1 ? "Fahrt" : "Fahrten"} · Ø{" "}
-                      {minutes(route.avgSeconds)} Min.
-                    </small>
-                  </div>
-                  <span className="record-winner-pill">
-                    <Trophy size={14} /> {route.fastest.memberNames} ·{" "}
-                    {minutes(route.fastest.seconds)} Min.
-                  </span>
+        <div
+          className="hour-chart"
+          role="img"
+          aria-label={`Fahrten nach Uhrzeit: ${
+            insights.hourly
+              .filter((h) => h.count > 0)
+              .map((h) => `${h.label} Uhr: ${h.count} Fahrten`)
+              .join(", ") || "keine Fahrten"
+          }`}
+        >
+          <div className="hour-bars">
+            {insights.hourly.map((h) => (
+              <div className="hour-col" key={h.hour}>
+                <div className="hour-bar-track">
+                  <div
+                    className={`hour-bar ${h.count === maxHourCount && h.count > 0 ? "peak" : ""}`}
+                    style={{
+                      height: `${(h.count / maxHourCount) * 100}%`,
+                      minHeight: h.count > 0 ? 4 : 0,
+                    }}
+                    title={`${h.label}:00–${h.label}:59 Uhr: ${h.count} Fahrten (${minutes(h.seconds)} Min.)`}
+                  />
                 </div>
-                <div className="route-leaderboard">
-                  {route.leaderboard.map((entry, idx) => {
-                    const m = members.find((x) => x.id === entry.memberId);
-                    return (
-                      <span
-                        className={`rider-chip ${idx === 0 ? "fastest-chip" : ""}`}
-                        key={entry.memberId}
-                        title={`Bestzeit ${minutes(entry.bestSeconds)} Min. · Durchschnitt ${minutes(entry.avgSeconds)} Min. (${entry.count}×)`}
-                      >
-                        <strong className="rank-num">#{idx + 1}</strong>
-                        {renderAvatar(m, "tiny")}
-                        <span>
-                          {entry.name}{" "}
-                          <strong>{minutes(entry.bestSeconds)} Min.</strong>{" "}
-                          <small>({entry.count}×)</small>
-                        </span>
-                      </span>
-                    );
-                  })}
-                </div>
-                <small className="route-record-date">
-                  Streckenrekord aufgestellt am{" "}
-                  {dateLabel(route.fastest.occurredAt, true)}
-                  {route.fastest.shared ? " (geteilte Fahrt)" : ""}
-                </small>
+                <span className={h.hour % 3 === 0 ? "" : "hidden-label"}>
+                  {h.label}
+                </span>
               </div>
             ))}
           </div>
-        )}
+        </div>
+
+        <div className="daypart-grid">
+          {insights.dayParts.map((part) => (
+            <div
+              key={part.id}
+              className={`daypart-card ${insights.peakDayPart?.id === part.id && part.count > 0 ? "active" : ""}`}
+            >
+              <div className="daypart-top">
+                <strong>{part.label}</strong>
+                <small>{part.range}</small>
+              </div>
+              <div className="daypart-value">
+                <strong>{part.count}</strong>{" "}
+                <span>{part.count === 1 ? "Fahrt" : "Fahrten"}</span>
+              </div>
+              <small>{minutes(part.seconds)} Min. gesamt</small>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="panel">

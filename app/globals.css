@@ -2820,6 +2820,24 @@ tr.voided td {
 }
 
 /* Strecken-Bestzeiten & Admin Dev-Dashboard */
+.dev-topbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 2.15rem;
+  padding: 0 0.62rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--inset);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.dev-topbar-btn:hover {
+  border-color: var(--tint);
+}
 .active-icon-btn {
   background: var(--tint) !important;
   color: var(--on-tint) !important;

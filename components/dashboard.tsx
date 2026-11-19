@@ -825,12 +825,13 @@ export function Dashboard(p: Props) {
             {admin && (
               <button
                 type="button"
-                className={`icon-button ${tab === "dev" ? "active-icon-btn" : ""}`}
+                className={`dev-topbar-btn ${tab === "dev" ? "active-icon-btn" : ""}`}
                 aria-label="Dev-Dashboard öffnen"
                 title="Admin Dev-Dashboard"
                 onClick={() => navigate(tab === "dev" ? "overview" : "dev")}
               >
-                <Terminal size={16} />
+                <Terminal size={15} />
+                <span>Dev</span>
               </button>
             )}
             <button
@@ -1899,6 +1900,24 @@ export function Dashboard(p: Props) {
                       )}
                     </div>
                   </div>
+                  {admin && (
+                    <div className="preference-row">
+                      <div>
+                        <strong>Admin Dev-Dashboard</strong>
+                        <small>
+                          GPS-Telemetrie pro Fahrt &amp; private 100-m-Crew-Orte
+                          verwalten
+                        </small>
+                      </div>
+                      <button
+                        type="button"
+                        className="button secondary compact-btn"
+                        onClick={() => navigate("dev")}
+                      >
+                        <Terminal size={15} /> Dev-Dashboard öffnen
+                      </button>
+                    </div>
+                  )}
                   <div className="preference-row">
                     <div>
                       <strong>Rechtliches &amp; Datenschutz</strong>
