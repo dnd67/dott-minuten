@@ -1,39 +1,22 @@
 :root {
-  color-scheme: light dark;
-  --bg: #f3f5f4;
-  --surface: #ffffff;
-  --ink: #142721;
-  --secondary: #50645b;
-  --tint: #08644d;
-  --on-tint: #ffffff;
-  --soft: #e2f1ea;
-  --inset: #eef2ef;
-  --line: #cfdbd4;
-  --danger: #ab302e;
-  --danger-bg: #ffedeb;
-  --ticket: #133e34;
-  --ticket-ink: #f3fff7;
-  --ticket-accent: #c3f7be;
-  --ticket-label: #c9e1d3;
-  --chart-outline: #648f7f;
+  color-scheme: dark;
+  --bg: #111113;
+  --surface: #1c1c1f;
+  --ink: #f5f5f6;
+  --secondary: #b8b8be;
+  --tint: #e0e0e4;
+  --on-tint: #171719;
+  --soft: #353539;
+  --inset: #27272a;
+  --line: #414145;
+  --danger: #ffaeaa;
+  --danger-bg: #462726;
+  --ticket: #343437;
+  --ticket-ink: #ffffff;
+  --ticket-accent: #ebebed;
+  --ticket-label: #d4d4d8;
+  --chart-outline: #929298;
   --pad: clamp(1rem, 2vw, 1.6rem);
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #101816;
-    --surface: #1b2723;
-    --ink: #edf6ef;
-    --secondary: #b2c5b9;
-    --tint: #98e3c0;
-    --on-tint: #12362a;
-    --soft: #253d32;
-    --inset: #26332d;
-    --line: #42564a;
-    --danger: #ffaba6;
-    --danger-bg: #472925;
-    --ticket: #204c3e;
-    --chart-outline: #83ad99;
-  }
 }
 * {
   box-sizing: border-box;
@@ -186,7 +169,7 @@ input::placeholder {
   border-radius: 50%;
   color: var(--secondary);
 }
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .button:hover:enabled {
     filter: brightness(0.92);
   }
@@ -251,24 +234,24 @@ input::placeholder {
   font-size: 0.75rem;
 }
 .av-0 {
-  --avatar-bg: #cee9d9;
-  --avatar-ink: #265c46;
+  --avatar-bg: #414145;
+  --avatar-ink: #fafafa;
 }
 .av-1 {
-  --avatar-bg: #ffe3cb;
-  --avatar-ink: #844516;
+  --avatar-bg: #57575b;
+  --avatar-ink: #ffffff;
 }
 .av-2 {
-  --avatar-bg: #e2e4fb;
-  --avatar-ink: #504986;
+  --avatar-bg: #c4c4c8;
+  --avatar-ink: #222225;
 }
 .av-3 {
-  --avatar-bg: #f8deeb;
-  --avatar-ink: #843f68;
+  --avatar-bg: #e2e2e5;
+  --avatar-ink: #28282b;
 }
 .av-4 {
-  --avatar-bg: #d8eaf2;
-  --avatar-ink: #34566f;
+  --avatar-bg: #8a8a90;
+  --avatar-ink: #111113;
 }
 .app-shell {
   --rail: clamp(12rem, 19vw, 15.5rem);
@@ -503,7 +486,7 @@ input::placeholder {
   background: var(--inset);
   color: var(--secondary);
 }
-.pill.mint {
+.pill.active {
   color: var(--tint);
   background: var(--soft);
 }
@@ -567,7 +550,7 @@ td {
   flex-wrap: wrap;
   position: relative;
   padding: 1rem clamp(1.3rem, 2.5vw, 2.2rem);
-  border-top: 1px dashed #95bba4;
+  border-top: 1px dashed #86868a;
 }
 .pass-stub::before,
 .pass-stub::after {
@@ -606,7 +589,7 @@ td {
 }
 .pass-track {
   grid-column: 1/-1;
-  background: #557365;
+  background: #67676c;
 }
 .pass-track i,
 .progress-fill {
@@ -617,7 +600,7 @@ td {
 }
 .balance-card .button {
   background: var(--ticket-accent);
-  color: #123a2c;
+  color: var(--on-tint);
 }
 .balance-card :focus-visible {
   outline-color: var(--ticket-ink);
@@ -1150,7 +1133,7 @@ td > small {
   overscroll-behavior: contain;
 }
 .entry-dialog::backdrop {
-  background: rgb(10 26 20 / 0.48);
+  background: rgb(0 0 0 / 0.65);
 }
 body:has(.entry-dialog[open]) {
   overflow: hidden;
@@ -1338,7 +1321,7 @@ body:has(.entry-dialog[open]) {
     border: 1px solid var(--line);
     background: var(--surface);
     border-radius: 1.5rem;
-    box-shadow: 0 0.3rem 1.3rem #10261c23;
+    box-shadow: 0 0.3rem 1.3rem #00000059;
   }
   .mobile-nav button {
     display: flex;
@@ -1354,6 +1337,20 @@ body:has(.entry-dialog[open]) {
     font-size: 0.7rem;
     overflow-wrap: anywhere;
     line-height: 1.25;
+  }
+  .tab-indicator {
+    pointer-events: none;
+    position: absolute;
+    grid-area: 1 / 1 / 2 / 2;
+    inset: 0;
+    background: var(--soft);
+    border-radius: 1.15rem;
+  }
+  .mobile-nav button {
+    position: relative;
+  }
+  .mobile-nav button.active {
+    background: transparent;
   }
   .mobile-nav button.active svg {
     stroke-width: 2.5px;
@@ -1437,5 +1434,60 @@ body:has(.entry-dialog[open]) {
 @media (max-width: 30rem) {
   .pass-stub .button {
     width: 100%;
+  }
+}
+.pass-track i {
+  transform-origin: left center;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root {
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  .button,
+  .icon-button {
+    transition: transform 160ms var(--ease-out);
+  }
+  :is(.button, .icon-button):enabled:active:not(:focus-visible) {
+    transform: scale(0.97);
+  }
+  .mobile-nav:not(:has(:focus-visible)) .tab-indicator {
+    transition: transform 160ms var(--ease-out);
+  }
+  .pass-track i {
+    transition: transform 250ms var(--ease-out);
+  }
+  .entry-dialog[data-motion] {
+    --dialog-offset: scale(0.96);
+    --dialog-ease: var(--ease-out);
+    transition:
+      opacity 200ms var(--dialog-ease),
+      transform 250ms var(--dialog-ease);
+  }
+  .entry-dialog[data-motion]::backdrop {
+    transition: opacity 200ms var(--ease-out);
+  }
+  .entry-dialog[data-motion][data-closing] {
+    opacity: 0;
+    transform: var(--dialog-offset);
+    pointer-events: none;
+  }
+  .entry-dialog[data-motion][data-closing]::backdrop {
+    opacity: 0;
+  }
+  @starting-style {
+    .entry-dialog[data-motion][open] {
+      opacity: 0;
+      transform: var(--dialog-offset);
+    }
+    .entry-dialog[data-motion][open]::backdrop {
+      opacity: 0;
+    }
+  }
+  @media (max-width: 48rem) {
+    .entry-dialog[data-motion] {
+      --dialog-offset: translateY(100%);
+      --dialog-ease: var(--ease-drawer);
+    }
   }
 }

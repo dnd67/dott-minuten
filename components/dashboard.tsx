@@ -87,7 +87,10 @@ const zurichKey = (date: Date) =>
 export function Dashboard(p: Props) {
   const { data } = p;
   const [tab, setTab] = useState<Tab>("overview");
-  const [modal, setModal] = useState<Modal>(null),
+  const [modal, setModal] = useState<{
+      kind: Exclude<Modal, null>;
+      motion: boolean;
+    } | null>(null),
     [voidRide, setVoidRide] = useState<Ride | null>(null);
   const [renameMember, setRenameMember] = useState<Member | null>(null);
   const [rideStatus, setRideStatus] = useState("all");
@@ -144,9 +147,9 @@ export function Dashboard(p: Props) {
     setTab(next);
     window.scrollTo({ top: 0, behavior: "instant" });
   }
-  function open(value: Modal) {
+  function open(kind: Exclude<Modal, null>, clickCount: number) {
     p.onBeginAction();
-    setModal(value);
+    setModal({ kind, motion: clickCount > 0 });
   }
   const filters = (
     <div className="filters">
@@ -259,7 +262,7 @@ export function Dashboard(p: Props) {
                 {minutes(r.pause_seconds)} <span className="unit">Min.</span>
               </td>
               <td>
-                <span className={`pill ${r.voided_at ? "muted" : "mint"}`}>
+                <span className={`pill ${r.voided_at ? "muted" : "active"}`}>
                   {minutes(r.charged_seconds)} Min.
                   {r.voided_at ? " · storniert" : ""}
                 </span>
@@ -282,9 +285,9 @@ export function Dashboard(p: Props) {
                       {!r.voided_at && (
                         <button
                           className="text-link danger"
-                          onClick={() => {
+                          onClick={(e) => {
                             setVoidRide(r);
-                            open("void");
+                            open("void", e.detail);
                           }}
                         >
                           Stornieren
@@ -309,7 +312,7 @@ export function Dashboard(p: Props) {
   const rideButton = (
     <button
       className="button primary"
-      onClick={() => open("ride")}
+      onClick={(e) => open("ride", e.detail)}
       disabled={!me}
     >
       <Plus size={18} />
@@ -470,7 +473,7 @@ export function Dashboard(p: Props) {
                       <div className="pass-track" aria-hidden="true">
                         <i
                           style={{
-                            width: `${own.quota > 0 ? Math.min(100, Math.max(0, (own.balance / own.quota) * 100)) : 0}%`,
+                            transform: `scaleX(${own.quota > 0 ? Math.min(1, Math.max(0, own.balance / own.quota)) : 0})`,
                           }}
                         />
                       </div>
@@ -636,7 +639,7 @@ export function Dashboard(p: Props) {
                     admin ? (
                       <button
                         className="button secondary"
-                        onClick={() => open("credit")}
+                        onClick={(e) => open("credit", e.detail)}
                       >
                         <Plus size={16} />
                         Minuten manuell geben
@@ -674,7 +677,7 @@ export function Dashboard(p: Props) {
                     admin ? (
                       <button
                         className="button secondary"
-                        onClick={() => open("package")}
+                        onClick={(e) => open("package", e.detail)}
                       >
                         <Plus size={16} />
                         Guthaben aufladen
@@ -966,7 +969,7 @@ export function Dashboard(p: Props) {
                             : "Deaktiviert"}
                         </small>
                       </div>
-                      <span className={`pill ${m.active ? "mint" : "muted"}`}>
+                      <span className={`pill ${m.active ? "active" : "muted"}`}>
                         {m.active ? "Aktiv" : "Inaktiv"}
                       </span>
                       {(admin || m.id === me?.id) && (
@@ -974,9 +977,9 @@ export function Dashboard(p: Props) {
                           <button
                             className="text-link"
                             disabled={p.busy}
-                            onClick={() => {
+                            onClick={(e) => {
                               setRenameMember(m);
-                              open("rename");
+                              open("rename", e.detail);
                             }}
                           >
                             Name ändern
@@ -1093,6 +1096,13 @@ export function Dashboard(p: Props) {
         </main>
       </div>
       <nav className="mobile-nav" aria-label="Mobile Navigation">
+        <span
+          aria-hidden="true"
+          className="tab-indicator"
+          style={{
+            transform: `translateX(${tabs.findIndex((t) => t.id === tab) * 100}%)`,
+          }}
+        />
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -1107,20 +1117,16 @@ export function Dashboard(p: Props) {
       </nav>
       {modal && (
         <EntryDialog
-          kind={modal}
+          kind={modal.kind}
+          motion={modal.motion}
           data={data}
           me={me}
           voidRide={voidRide}
           renameMember={renameMember}
           busy={p.busy}
           remoteError={p.error}
-          close={() => {
-            if (!p.busy) setModal(null);
-          }}
-          onSave={async (action, args) => {
-            const result = await p.mutate(action, args);
-            if (result) setModal(null);
-          }}
+          close={() => setModal(null)}
+          onSave={p.mutate}
         />
       )}
     </div>
@@ -1241,6 +1247,7 @@ function ActivityChart({ rides }: { rides: Ride[] }) {
 }
 function EntryDialog({
   kind,
+  motion,
   data,
   me,
   voidRide,
@@ -1251,6 +1258,7 @@ function EntryDialog({
   onSave,
 }: {
   kind: Exclude<Modal, null>;
+  motion: boolean;
   data: Snapshot;
   me?: Member;
   voidRide: Ride | null;
@@ -1258,10 +1266,11 @@ function EntryDialog({
   busy: boolean;
   remoteError: string;
   close: () => void;
-  onSave: (action: Action, args: RpcArgs) => Promise<void>;
+  onSave: Props["mutate"];
 }) {
   const dialog = useRef<HTMLDialogElement>(null),
     first = useRef<HTMLInputElement>(null);
+  const pointerSubmit = useRef(false);
   const [drive, setDrive] = useState(""),
     [pause, setPause] = useState("0"),
     [error, setError] = useState("");
@@ -1320,30 +1329,44 @@ function EntryDialog({
           : kind === "rename"
             ? "Der neue Name gilt in der ganzen Gruppe. Fahrten und Guthaben bleiben derselben Person zugeordnet."
             : "Die Minuten werden mit einer Gegenbuchung zurückgegeben. Die ursprüngliche Fahrt bleibt sichtbar.";
+  async function dismiss(animate: boolean) {
+    const node = dialog.current;
+    if (!node || node.dataset.closing) return;
+    node.dataset.closing = "true";
+    if (animate && motion) {
+      await Promise.allSettled(
+        node.getAnimations().map((animation) => animation.finished),
+      );
+    }
+    if (node.isConnected) close();
+  }
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (busy) return;
+    if (busy || dialog.current?.dataset.closing) return;
     setError("");
     const f = new FormData(e.currentTarget);
+    const animate = pointerSubmit.current;
+    pointerSubmit.current = false;
     try {
+      let saved: boolean | string = false;
       const str = (k: string) => String(f.get(k) ?? "");
       if (kind === "ride") {
         const draft = rideDraft(drive, pause);
-        await onSave("record_ride", {
+        saved = await onSave("record_ride", {
           p_drive_minutes: draft.duration_seconds / 60,
           p_pause_minutes: draft.pause_seconds / 60,
           p_occurred_at: new Date(str("when")).toISOString(),
           p_note: str("note"),
         });
       } else if (kind === "credit")
-        await onSave("credit_minutes", {
+        saved = await onSave("credit_minutes", {
           p_member_id: str("member"),
           p_minutes: wholeMinutes(str("minutes")),
           p_reason: str("reason"),
         });
       else if (kind === "package") {
         if (allocationMessage) throw new Error(allocationMessage);
-        await onSave("record_topup", {
+        saved = await onSave("record_topup", {
           p_payer_id: str("member"),
           p_minutes: wholeMinutes(str("minutes")),
           p_price_rappen: moneyRappen(packagePrice),
@@ -1358,15 +1381,16 @@ function EntryDialog({
         const name = str("display_name").trim();
         if (!name || name.length > 60)
           throw new Error("Bitte einen Namen mit 1 bis 60 Zeichen eingeben.");
-        await onSave("rename_member", {
+        saved = await onSave("rename_member", {
           p_member_id: renameMember.id,
           p_display_name: name,
         });
       } else if (voidRide)
-        await onSave("void_ride", {
+        saved = await onSave("void_ride", {
           p_ride_id: voidRide.id,
           p_reason: str("reason"),
         });
+      if (saved) await dismiss(animate);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Bitte Eingaben prüfen.");
     }
@@ -1375,13 +1399,14 @@ function EntryDialog({
     <dialog
       ref={dialog}
       className="entry-dialog"
+      data-motion={motion || undefined}
       aria-labelledby="dialog-title"
       onCancel={(e) => {
         e.preventDefault();
-        close();
+        if (!busy) void dismiss(false);
       }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) close();
+        if (!busy && e.target === e.currentTarget) void dismiss(e.detail > 0);
       }}
     >
       <div className="dialog-inner">
@@ -1389,7 +1414,7 @@ function EntryDialog({
           className="icon-button dialog-close"
           type="button"
           aria-label="Schliessen"
-          onClick={close}
+          onClick={(e) => void dismiss(e.detail > 0)}
           disabled={busy}
         >
           <X size={22} />
@@ -1623,11 +1648,14 @@ function EntryDialog({
               className="button secondary"
               type="button"
               disabled={busy}
-              onClick={close}
+              onClick={(e) => void dismiss(e.detail > 0)}
             >
               Abbrechen
             </button>
             <button
+              onClick={(e) => {
+                pointerSubmit.current = e.detail > 0;
+              }}
               className={`button ${kind === "void" ? "destructive" : "primary"}`}
               disabled={busy}
             >

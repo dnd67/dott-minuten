@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
+    statusBarStyle: "black",
     title: "Minutenclub",
   },
   icons: { icon: "/icon.svg", apple: "/apple-touch-icon.png" },
@@ -17,11 +17,8 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  colorScheme: "light dark",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f3f5f4" },
-    { media: "(prefers-color-scheme: dark)", color: "#101816" },
-  ],
+  colorScheme: "dark",
+  themeColor: "#111113",
 };
 export default function RootLayout({
   children,
