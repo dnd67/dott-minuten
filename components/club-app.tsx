@@ -8,6 +8,8 @@ import {
   LoaderCircle,
   Mail,
   ExternalLink,
+  Sparkles,
+  Ticket,
 } from "lucide-react";
 import {
   getSupabase,
@@ -18,13 +20,18 @@ import {
 import { DEMO_USER, demoAction, demoSnapshot } from "@/lib/demo";
 import type { Action, Group, RpcArgs, Snapshot } from "@/lib/domain";
 import { Dashboard } from "./dashboard";
+import { OnboardingModal } from "./onboarding-modal";
+import { ThemeCycleButton } from "./theme-toggle";
 
 const DEMO_KEY = "minutenclub-demo-v1";
+const INVITE_KEY = "minutenclub-pending-invite-v1";
+
 function errorText(error: unknown) {
   if (error && typeof error === "object" && "message" in error)
     return String(error.message);
   return "Das hat nicht geklappt. Bitte erneut versuchen.";
 }
+
 export function ClubApp() {
   const [client] = useState(getSupabase);
   const [session, setSession] = useState<Session | null>(null);
@@ -40,6 +47,9 @@ export function ClubApp() {
   const [connected, setConnected] = useState(false);
   const [online, setOnline] = useState(true);
   const [syncedAt, setSyncedAt] = useState<Date | null>(null);
+  const [pendingInvite, setPendingInvite] = useState("");
+  const [entryTour, setEntryTour] = useState(false);
+  const [justOnboarded, setJustOnboarded] = useState(false);
   const refreshRef = useRef<() => Promise<void>>(async () => {});
   const command = useRef<{ payload: string; id: string } | null>(null);
   const busyRef = useRef(false);
@@ -58,10 +68,23 @@ export function ClubApp() {
     setError("");
     setSyncedAt(new Date());
   }, []);
+
   useEffect(() => {
     queueMicrotask(() => {
-      if (new URLSearchParams(window.location.search).get("demo") === "1")
-        startDemo();
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("demo") === "1") startDemo();
+      const urlInvite = params.get("invite")?.trim() ?? "";
+      if (urlInvite) {
+        setPendingInvite(urlInvite);
+        try {
+          sessionStorage.setItem(INVITE_KEY, urlInvite);
+        } catch {}
+      } else {
+        try {
+          const saved = sessionStorage.getItem(INVITE_KEY);
+          if (saved) setPendingInvite(saved);
+        } catch {}
+      }
       setOnline(navigator.onLine);
     });
     const on = () => setOnline(true),
@@ -73,6 +96,7 @@ export function ClubApp() {
       window.removeEventListener("offline", off);
     };
   }, [startDemo]);
+
   useEffect(() => {
     if (!client) return;
     let alive = true;
@@ -91,6 +115,7 @@ export function ClubApp() {
       data.subscription.unsubscribe();
     };
   }, [client]);
+
   const loadGroups = useCallback(async () => {
     if (!client) return;
     const result = await listGroups(client);
@@ -100,6 +125,7 @@ export function ClubApp() {
     );
     setGroupsReady(true);
   }, [client]);
+
   useEffect(() => {
     if (!userId || demo) return;
     let alive = true;
@@ -123,6 +149,7 @@ export function ClubApp() {
       alive = false;
     };
   }, [client, userId, demo]); // Token-Refresh setzt die Gruppenansicht nicht zurück.
+
   useEffect(() => {
     if (demo || !client || !userId || !groupId) return;
     const group = groups.find((g) => g.id === groupId);
@@ -163,6 +190,7 @@ export function ClubApp() {
       "minute_entries",
       "packages",
       "package_contributions",
+      "feedback",
     ]) {
       channel.on(
         "postgres_changes",
@@ -212,8 +240,6 @@ export function ClubApp() {
     busyRef.current = true;
     setBusy(true);
     setError("");
-    // Ein geöffneter Vorgang behält seinen Schlüssel auch beim Korrigieren nach einem Fehler.
-    // War der erste Versuch bereits verbucht, weist die Datenbank geänderte Nutzdaten ab.
     const payload = JSON.stringify([groupId, action]);
     if (command.current?.payload !== payload)
       command.current = { payload, id: crypto.randomUUID() };
@@ -250,6 +276,7 @@ export function ClubApp() {
       setBusy(false);
     }
   }
+
   async function setup(name: string, displayName: string, token?: string) {
     if (busyRef.current || !client) return;
     busyRef.current = true;
@@ -269,6 +296,13 @@ export function ClubApp() {
           });
       if (response.error) throw response.error;
       createId.current = null;
+      setPendingInvite("");
+      try {
+        sessionStorage.removeItem(INVITE_KEY);
+      } catch {}
+      if (window.location.search.includes("invite="))
+        window.history.replaceState({}, "", window.location.pathname);
+      setJustOnboarded(true);
       await loadGroups();
       setGroupId(String(response.data));
     } catch (e) {
@@ -278,6 +312,7 @@ export function ClubApp() {
       busyRef.current = false;
     }
   }
+
   async function logout() {
     if (busyRef.current) return;
     if (client) {
@@ -295,10 +330,12 @@ export function ClubApp() {
     setGroupsReady(false);
     setError("");
     setSyncedAt(null);
+    setJustOnboarded(false);
     command.current = null;
     if (window.location.search)
       window.history.replaceState({}, "", window.location.pathname);
   }
+
   if (
     (demo || session) &&
     snapshot &&
@@ -317,6 +354,8 @@ export function ClubApp() {
         syncedAt={syncedAt}
         error={error}
         busy={busy}
+        autoOpenTour={justOnboarded}
+        onTourOpened={() => setJustOnboarded(false)}
         mutate={mutate}
         onGroup={(id) => {
           setGroupId(id);
@@ -338,25 +377,59 @@ export function ClubApp() {
         }}
       />
     );
+
   return (
     <main className="entry-page">
-      <div className="entry-brand">
-        <span className="brand-icon">
-          <Zap size={23} fill="currentColor" />
-        </span>
-        minutenclub<span className="brand-dot">.</span>
+      <div className="entry-header">
+        <div className="entry-brand">
+          <span className="brand-icon">
+            <Zap size={23} fill="currentColor" />
+          </span>
+          minutenclub<span className="brand-dot">.</span>
+        </div>
+        <div className="entry-header-actions">
+          <button
+            type="button"
+            className="button secondary compact-btn"
+            onClick={() => setEntryTour(true)}
+          >
+            <Sparkles size={16} />
+            So funktioniert&apos;s
+          </button>
+          <ThemeCycleButton />
+        </div>
       </div>
+
       <div className="entry-layout">
         <section className="entry-intro">
           <h1>
             Euer gemeinsames <span>Minutenkonto.</span>
           </h1>
           <p>
-            Teilt eure Dott-Minutenpakete, erfasst Fahrten und seht, wie viele
-            Minuten euch in Zürich noch bleiben.
+            Teilt eure Dott-Minutenpakete, entsperrt Fahrten mit freiwilligem
+            Standort-Schutz und seht, wie viele Minuten euch in Zürich noch
+            bleiben.
           </p>
+          <div className="entry-highlights">
+            <span>
+              <Ticket size={15} /> Fair nach CHF-Anteil aufgeteilt
+            </span>
+            <span>
+              <Sparkles size={15} /> Standort nur aktiv beim Tippen
+            </span>
+          </div>
         </section>
+
         <section className="entry-card">
+          {pendingInvite && !session && (
+            <div className="notice invite-banner" role="status">
+              <Ticket size={18} />
+              <span>
+                Einladung erkannt – nach dem Anmelden wird dein Code automatisch
+                eingefügt.
+              </span>
+            </div>
+          )}
           {error && (
             <div role="alert" className="notice error">
               {error}
@@ -374,21 +447,32 @@ export function ClubApp() {
               <button className="button primary wide" onClick={startDemo}>
                 Demo ausprobieren <ArrowRight size={18} />
               </button>
+              <button
+                type="button"
+                className="button secondary wide entry-secondary-cta"
+                onClick={() => setEntryTour(true)}
+              >
+                <Sparkles size={17} /> Interaktive Einführung ansehen
+              </button>
               <a
                 className="text-link"
                 href="https://github.com/dnd67/dott-minuten/blob/main/docs/setup.md"
                 target="_blank"
                 rel="noreferrer"
               >
-                Einrichtung für Supabase & Vercel <ExternalLink size={15} />
+                Einrichtung für Supabase &amp; Vercel <ExternalLink size={15} />
               </a>
               <small>Die Demo speichert nur auf diesem Gerät.</small>
             </>
           ) : session ? (
             !groupsReady ? (
               <Loading />
-            ) : groups.length === 0 ? (
-              <GroupSetup busy={busy} onSubmit={setup} />
+            ) : groups.length === 0 || pendingInvite ? (
+              <GroupSetup
+                busy={busy}
+                initialToken={pendingInvite}
+                onSubmit={setup}
+              />
             ) : (
               <>
                 <Loading />
@@ -412,21 +496,35 @@ export function ClubApp() {
               </>
             )
           ) : (
-            <AuthForm client={client!} startDemo={startDemo} />
+            <AuthForm
+              client={client!}
+              pendingInvite={pendingInvite}
+              startDemo={startDemo}
+            />
           )}
-          {session && groups.length === 0 && (
+          {session && (groups.length === 0 || Boolean(pendingInvite)) && (
             <button className="text-link" disabled={busy} onClick={logout}>
               Abmelden
             </button>
           )}
         </section>
       </div>
+
       <footer className="entry-footer">
         <span>Unabhängiges Projekt · Keine Verbindung zu Dott</span>
       </footer>
+
+      {entryTour && (
+        <OnboardingModal
+          motion={true}
+          groupName="Minutenclub"
+          onClose={() => setEntryTour(false)}
+        />
+      )}
     </main>
   );
 }
+
 function Loading() {
   return (
     <div className="loading">
@@ -435,11 +533,14 @@ function Loading() {
     </div>
   );
 }
+
 function AuthForm({
   client,
+  pendingInvite,
   startDemo,
 }: {
   client: NonNullable<ReturnType<typeof getSupabase>>;
+  pendingInvite: string;
   startDemo: () => void;
 }) {
   const [email, setEmail] = useState(""),
@@ -460,6 +561,9 @@ function AuthForm({
           setBusy(true);
           setError("");
           try {
+            const redirectUrl = pendingInvite
+              ? `${window.location.origin}/?invite=${encodeURIComponent(pendingInvite)}`
+              : window.location.origin;
             const response = sent
               ? await client.auth.verifyOtp({
                   email: email.trim(),
@@ -468,7 +572,7 @@ function AuthForm({
                 })
               : await client.auth.signInWithOtp({
                   email: email.trim(),
-                  options: { emailRedirectTo: window.location.origin },
+                  options: { emailRedirectTo: redirectUrl },
                 });
             if (response.error) throw response.error;
             if (!sent) setSent(true);
@@ -554,21 +658,24 @@ function AuthForm({
     </>
   );
 }
+
 function GroupSetup({
   busy,
+  initialToken,
   onSubmit,
 }: {
   busy: boolean;
+  initialToken?: string;
   onSubmit: (name: string, displayName: string, token?: string) => void;
 }) {
-  const [join, setJoin] = useState(false);
+  const [join, setJoin] = useState(Boolean(initialToken));
   return (
     <>
-      <h2>{join ? "Zu eurer Crew." : "Gründe euren Club."}</h2>
+      <h2>{join ? "Zu eurer Crew" : "Gründe euren Club"}</h2>
       <p>
         {join
-          ? "Den Einladungscode bekommst du von eurem Admin."
-          : "Du wirst Admin und kannst danach deine Freunde einladen."}
+          ? "Den Einladungscode bekommst du von eurem Admin – per Einladungslink ist er bereits ausgefüllt."
+          : "Du wirst Admin und kannst danach deine Freunde per Link einladen."}
       </p>
       <form
         onSubmit={(e) => {
@@ -597,6 +704,7 @@ function GroupSetup({
             <input
               name="token"
               required
+              defaultValue={initialToken ?? ""}
               autoCapitalize="none"
               autoCorrect="off"
               placeholder="Code einfügen"

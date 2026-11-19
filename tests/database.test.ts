@@ -594,6 +594,114 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
       );
     },
   );
+  await t.test(
+    "Fahrtorte werden gerundet, validiert und Feedback nach Rollenrechten geschützt",
+    async () => {
+      const locRide = randomUUID();
+      await as(
+        friend,
+        "select public.record_ride($1,$2,$3,12,1,'Arbeitsweg',$4,$5,$6,$7,$8,$9)",
+        [
+          gid,
+          locRide,
+          "2026-01-03T07:30:00Z",
+          "  Zürich HB  ",
+          47.377949,
+          8.540349,
+          "  ETH Polyterrasse ",
+          47.376311,
+          8.547611,
+        ],
+      );
+      const [saved] = await as<{
+        start_label: string;
+        start_lat: number;
+        end_label: string;
+        end_lng: number;
+      }>(
+        owner,
+        "select start_label,start_lat,end_label,end_lng from public.rides where id=$1",
+        [locRide],
+      );
+      assert.equal(saved.start_label, "Zürich HB");
+      assert.equal(saved.start_lat, 47.3779);
+      assert.equal(saved.end_label, "ETH Polyterrasse");
+      assert.equal(saved.end_lng, 8.5476);
+
+      // Unvollständige oder unmögliche Koordinaten werden abgewiesen:
+      await assert.rejects(
+        () =>
+          as(
+            friend,
+            "select public.record_ride($1,$2,$3,5,0,'','HB',47.37,null,'',null,null)",
+            [gid, randomUUID(), "2026-01-03T08:00:00Z"],
+          ),
+        /Unvollständige/,
+      );
+      await assert.rejects(
+        () =>
+          as(
+            friend,
+            "select public.record_ride($1,$2,$3,5,0,'','HB',95.0,8.54,'',null,null)",
+            [gid, randomUUID(), "2026-01-03T08:00:00Z"],
+          ),
+        /Ungültiger Startort/,
+      );
+
+      // Feedback: Mitglied speichert eigenes Feedback; Admin sieht alle, Mitglied nur eigene.
+      const fbFriend = randomUUID(),
+        fbOwner = randomUUID();
+      await as(
+        friend,
+        "select public.submit_feedback($1,$2,'idea',$3,'Statistik')",
+        [gid, fbFriend, "  Uhrzeitfilter ist super  "],
+      );
+      await as(
+        friend,
+        "select public.submit_feedback($1,$2,'idea',$3,'Statistik')",
+        [gid, fbFriend, "Uhrzeitfilter ist super"],
+      );
+      await as(
+        owner,
+        "select public.submit_feedback($1,$2,'bug',$3,'Fahrten')",
+        [gid, fbOwner, "Admin-Notiz zum Launch"],
+      );
+
+      const friendVisible = await as<{ id: string }>(
+        friend,
+        "select id from public.feedback where group_id=$1",
+        [gid],
+      );
+      assert.equal(friendVisible.length, 1);
+      assert.equal(friendVisible[0].id, fbFriend);
+
+      const ownerVisible = await as<{ id: string }>(
+        owner,
+        "select id from public.feedback where group_id=$1",
+        [gid],
+      );
+      assert.equal(ownerVisible.length, 2);
+
+      const [dashFriend] = await as<{ value: { feedback: unknown[] } }>(
+        friend,
+        "select public.get_dashboard($1) as value",
+        [gid],
+      );
+      assert.equal(dashFriend.value.feedback.length, 1);
+
+      const [dashOwner] = await as<{ value: { feedback: unknown[] } }>(
+        owner,
+        "select public.get_dashboard($1) as value",
+        [gid],
+      );
+      assert.equal(dashOwner.value.feedback.length, 2);
+
+      await assert.rejects(
+        () => as(friend, "delete from public.feedback where id=$1", [fbFriend]),
+        /permission denied/,
+      );
+    },
+  );
   await db.close();
 });
 

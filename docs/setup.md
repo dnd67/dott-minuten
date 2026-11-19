@@ -8,8 +8,8 @@ Diese Schritte werden einmal für eure Crew erledigt. GitHub enthält den Code; 
 
 1. Auf [supabase.com](https://supabase.com) ein Konto erstellen und ein neues Projekt anlegen.
 2. Eine EU-Region auswählen, möglichst nahe an Zürich. Das Datenbankpasswort sicher speichern.
-3. Im **SQL Editor** die SQL-Dateien in Reihenfolge ausführen: zuerst [202611180001_initial.sql](../supabase/migrations/202611180001_initial.sql), danach [202611190001_names_and_cancellations.sql](../supabase/migrations/202611190001_names_and_cancellations.sql) und zuletzt [202611190002_shared_topups.sql](../supabase/migrations/202611190002_shared_topups.sql). Die erste erstellt Tabellen und Buchungsfunktionen, die zweite ergänzt Namen und Storno-Akteur, die dritte gemeinsame Aufladungen mit Beiträgen. Jede Datei wird vollständig und jeweils einmal ausgeführt.
-4. Bei Erfolg erscheinen `groups`, `memberships`, `rides`, `minute_entries`, `packages`, `package_contributions` und `invitations` im Table Editor. Das Schema `app_private` enthält interne Hilfsfunktionen und die Idempotenzverwaltung.
+3. Im **SQL Editor** die SQL-Dateien in Reihenfolge ausführen: zuerst [202611180001_initial.sql](../supabase/migrations/202611180001_initial.sql), danach [202611190001_names_and_cancellations.sql](../supabase/migrations/202611190001_names_and_cancellations.sql), dann [202611190002_shared_topups.sql](../supabase/migrations/202611190002_shared_topups.sql) und zuletzt [202611190003_locations_and_feedback.sql](../supabase/migrations/202611190003_locations_and_feedback.sql). Die erste erstellt Tabellen und Buchungsfunktionen, die zweite ergänzt Namen und Storno-Akteur, die dritte gemeinsame Aufladungen mit Beiträgen und die vierte optionale Fahrtorte sowie die Feedback-Tabelle `public.feedback`. Jede Datei wird vollständig und jeweils einmal ausgeführt.
+4. Bei Erfolg erscheinen `groups`, `memberships`, `rides`, `minute_entries`, `packages`, `package_contributions`, `feedback` und `invitations` im Table Editor. Das Schema `app_private` enthält interne Hilfsfunktionen und die Idempotenzverwaltung.
 5. Unter **Project Settings → API / API Keys** die Projekt-URL und den **Publishable Key** kopieren. Falls das Projekt noch Legacy Keys verwendet, funktioniert auch der **anon public** Key.
 
 Keine Tabellen für anonymen Schreibzugriff öffnen. Die Migration enthält bereits sämtliche erforderlichen Berechtigungen. Keine Service-Role-Keys im Browser oder in `NEXT_PUBLIC_`-Variablen verwenden.
@@ -75,7 +75,7 @@ Danach `npm run dev` starten und `http://localhost:3000` öffnen. Nach Änderung
 1. Auf [vercel.com](https://vercel.com) ein Konto erstellen und mit GitHub verbinden.
 2. **Add New → Project → Import Git Repository** wählen und `dnd67/dott-minuten` importieren.
 3. Das Framework **Next.js**, das Repository-Hauptverzeichnis als Root und die Standardbefehle verwenden: Installation `npm ci`, Build `npm run build`. Node.js 24 LTS auswählen, soweit angeboten; mindestens 22.
-4. Die beiden Variablen aus `.env.example` mit den echten Werten unter **Environment Variables** für **Production** hinterlegen.
+4. Die Variablen aus `.env.example` mit den echten Werten unter **Environment Variables** für **Production** hinterlegen. Um das vorbereitete **Feedback-Fenster** beim Launch scharfzuschalten, zusätzlich `NEXT_PUBLIC_FEEDBACK_ENABLED=true` setzen (ohne diese Variable speichert das Feedback-Fenster lokal im Vorschau-Modus).
 5. **Deploy** ausführen. Vercel liefert eine HTTPS-Adresse wie `https://DEIN-PROJEKT.vercel.app`.
 6. Diese genaue Adresse in Supabase als **Site URL** und **Redirect URL** eintragen. Die lokale Redirect URL nur behalten, wenn weiterhin lokal getestet wird.
 7. Die Vercel-Adresse öffnen und den Anmeldelink testen. Wenn die Variablen erst nach dem ersten Build gesetzt wurden, ein neues Deployment starten: `NEXT_PUBLIC_`-Werte werden beim Build eingebaut.

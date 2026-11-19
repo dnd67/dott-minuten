@@ -200,3 +200,142 @@ test("Aufladen nach Beiträgen aktualisiert Home, Restguthaben und Kontingentdia
     page.locator(".crew-row").filter({ hasText: "August" }),
   ).toContainText("447");
 });
+
+test("Onboarding, Hell/Dunkel-Modus, Feedback-Vorschau und Dott-Entsperrung mit Einmal-Standort", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+    permissions: ["geolocation"],
+    geolocation: { latitude: 47.3779, longitude: 8.5403 },
+  });
+  const page = await context.newPage();
+
+  // Überwache im Browser, dass watchPosition NIEMALS aufgerufen wird und getCurrentPosition nur auf Klick.
+  await page.addInitScript(() => {
+    const w = window as unknown as {
+      __geoCalls: number;
+      __watchCalls: number;
+    };
+    w.__geoCalls = 0;
+    w.__watchCalls = 0;
+    const origGet = navigator.geolocation.getCurrentPosition.bind(
+      navigator.geolocation,
+    );
+    navigator.geolocation.getCurrentPosition = (success, error, options) => {
+      w.__geoCalls++;
+      return origGet(success, error, options);
+    };
+    navigator.geolocation.watchPosition = () => {
+      w.__watchCalls++;
+      throw new Error("watchPosition darf nicht verwendet werden!");
+    };
+  });
+
+  await page.goto("http://localhost:3100/");
+  // 1. Interaktive Onboarding-Tour von der Startseite aus testen
+  await page.getByRole("button", { name: "So funktioniert's" }).click();
+  await expect(
+    page.getByRole("heading", { name: /Dein Minutenpass/ }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "22 Min." }).click();
+  await page.getByRole("button", { name: "3 Min." }).click();
+  await expect(page.locator(".sim-pass-preview")).toContainText("25 Min.");
+  await page.getByRole("button", { name: "Weiter" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Dott entsperren & Ort auf Wunsch" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Weiter" }).click();
+  // Darstellungsmodus im Onboarding auf Hell schalten
+  await page.getByRole("button", { name: "Hell", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await page.getByRole("button", { name: "Loslegen" }).click();
+
+  // Demo starten – noch KEIN Standortabruf beim blossen Laden!
+  await page.getByRole("button", { name: "Demo ausprobieren" }).click();
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __geoCalls: number }).__geoCalls,
+    ),
+  ).toBe(0);
+
+  // 2. Dott entsperren mit einmaliger Standortfreigabe (Zürich HB)
+  await page.getByRole("button", { name: "Dott entsperren" }).click();
+  await page
+    .getByRole("button", { name: "Aktuellen Startort übernehmen" })
+    .click();
+  await expect(page.locator('input[name="unlock_start"]')).toHaveValue(
+    "Zürich HB",
+  );
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __geoCalls: number }).__geoCalls,
+    ),
+  ).toBe(1);
+  await page.getByRole("button", { name: "Fahrt starten" }).click();
+  await expect(page.getByText(/Scooter entsperrt/)).toBeVisible();
+  await expect(page.getByText(/Start: Zürich HB/)).toBeVisible();
+
+  // Zielkoordinaten auf ETH Polyterrasse ändern und Fahrt beenden
+  await context.setGeolocation({ latitude: 47.3763, longitude: 8.5476 });
+  await page.getByRole("button", { name: "Fahrt abschliessen" }).click();
+  await expect(page.getByLabel("Startort", { exact: true })).toHaveValue(
+    "Zürich HB",
+  );
+  await page
+    .getByRole("button", { name: "Aktuellen Zielort einmalig erfassen" })
+    .click();
+  await expect(page.getByLabel("Zielort", { exact: true })).toHaveValue(
+    "ETH Polyterrasse",
+  );
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __geoCalls: number }).__geoCalls,
+    ),
+  ).toBe(2);
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __watchCalls: number }).__watchCalls,
+    ),
+  ).toBe(0);
+  await page.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(page.getByText("Zürich HB → ETH Polyterrasse")).toBeVisible();
+
+  // 3. Neue Uhrzeit- & Zielstatistik auf iPhone-Breite prüfen
+  await page
+    .locator(".mobile-nav")
+    .getByRole("button", { name: "Statistik", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Um welche Uhrzeit seid ihr unterwegs?",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Wohin, wie oft & wer?" }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".destination-row").filter({
+      has: page.locator(".destination-title strong", {
+        hasText: "ETH Polyterrasse",
+      }),
+    }),
+  ).toContainText("2×");
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+
+  // 4. Feedback-Fenster (Vorschau für späteren Launch) prüfen
+  await page.getByRole("button", { name: "Feedback geben" }).click();
+  await expect(page.getByText("Vorbereitet für Launch")).toBeVisible();
+  await page.getByLabel(/Deine Nachricht/).fill("Super schnelle Entsperrung!");
+  await page.getByRole("button", { name: "Feedback senden" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Danke für deine Rückmeldung!" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Fertig" }).click();
+
+  await context.close();
+});

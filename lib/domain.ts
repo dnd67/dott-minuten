@@ -21,6 +21,12 @@ export type Ride = {
   voided_at: string | null;
   void_reason?: string;
   voided_by_member_id?: string | null;
+  start_label?: string;
+  start_lat?: number | null;
+  start_lng?: number | null;
+  end_label?: string;
+  end_lat?: number | null;
+  end_lng?: number | null;
 };
 export type Entry = {
   id: string;
@@ -50,6 +56,16 @@ export type Contribution = {
   amount_rappen: number;
   allocated_seconds: number;
 };
+export type FeedbackCategory = "idea" | "bug" | "praise" | "other";
+export type FeedbackItem = {
+  id: string;
+  group_id: string;
+  member_id: string;
+  category: FeedbackCategory;
+  message: string;
+  page: string;
+  created_at: string;
+};
 export type Snapshot = {
   group: Group;
   members: Member[];
@@ -57,6 +73,7 @@ export type Snapshot = {
   entries: Entry[];
   packages: Package[];
   contributions?: Contribution[];
+  feedback?: FeedbackItem[];
 };
 export type Action =
   | "record_ride"
@@ -66,10 +83,11 @@ export type Action =
   | "void_ride"
   | "rename_member"
   | "update_member"
-  | "create_invite";
+  | "create_invite"
+  | "submit_feedback";
 export type RpcArgs = Record<
   string,
-  string | number | boolean | ContributionInput[]
+  string | number | boolean | null | ContributionInput[]
 >;
 export const minutes = (seconds: number) =>
   new Intl.NumberFormat("de-CH", { maximumFractionDigits: 1 }).format(

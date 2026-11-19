@@ -8,6 +8,7 @@ import {
   wholeMinutes,
 } from "../lib/domain";
 import { demoSnapshot, demoAction } from "../lib/demo";
+import { computeRideInsights, resolvePlaceLabel } from "../lib/location";
 
 test("Fahrt und Pause werden addiert; Freischaltung gehört nicht zum Buchungsmodell", () => {
   assert.deepEqual(rideDraft("14", "1"), {
@@ -97,5 +98,90 @@ test("Kontingent enthält nur Gutschriften, keine Storno-Gegenbuchungen", () => 
   assert.equal(
     summary(after, "demo-0").balance + summary(after, "demo-0").consumed,
     200 * 60,
+  );
+});
+
+test("Ortszuordnung bevorzugt benannte Gruppenorte vor Zürich-Hubs und rundet unbekannte Orte", () => {
+  const data = demoSnapshot();
+  data.rides.push({
+    ...data.rides[0],
+    id: "custom-spot-ride",
+    end_label: "Unser Büro",
+    end_lat: 47.3781,
+    end_lng: 8.5405,
+  });
+  // Innerhalb 220 m vom eigenen Gruppenort gewinnt der eigene Name vor "Zürich HB".
+  assert.equal(resolvePlaceLabel(47.378, 8.5404, data.rides), "Unser Büro");
+  // Bekannter Zürcher Ort ohne eigenen Gruppentreffer:
+  assert.equal(resolvePlaceLabel(47.4083, 8.5067, []), "ETH Hönggerberg");
+  // Ausserhalb bekannter Orte: keine externe API, sauber gerundeter Fallback.
+  assert.equal(resolvePlaceLabel(46.948, 7.4474, []), "Standort (46.95, 7.45)");
+});
+
+test("Routen- und Uhrzeit-Statistik wertet Wer, Wie oft, Wann und Wohin ohne Stornos aus", () => {
+  const before = demoSnapshot();
+  const withCustom = demoAction(before, "record_ride", {
+    p_request_id: "loc-ride-1",
+    p_drive_minutes: 11,
+    p_pause_minutes: 1,
+    p_occurred_at: "2026-06-15T06:30:00.000Z", // 08:30 Zürich-Sommerzeit (Morgen)
+    p_note: "Pendeln",
+    p_start_label: "Zürich HB",
+    p_start_lat: 47.3779123,
+    p_start_lng: 8.5403123,
+    p_end_label: "ETH Polyterrasse",
+    p_end_lat: 47.3763123,
+    p_end_lng: 8.5476123,
+  });
+  const savedRide = withCustom.rides.find((r) => r.id === "loc-ride-1")!;
+  assert.equal(savedRide.start_lat, 47.3779);
+  assert.equal(savedRide.end_lng, 8.5476);
+
+  const insights = computeRideInsights(withCustom.rides, withCustom.members);
+  assert.equal(insights.totalRides, 13);
+  assert.equal(insights.locatedRideCount, 13);
+  const eth = insights.destinations.find((d) => d.label === "ETH Polyterrasse");
+  assert.ok(eth);
+  assert.equal(eth.count, 2);
+  assert.equal(eth.riders.length, 2);
+
+  // Stornierte Fahrt verschwindet aus Ziel- und Uhrzeit-Statistik:
+  const afterVoid = demoAction(withCustom, "void_ride", {
+    p_request_id: "void-loc-1",
+    p_ride_id: "loc-ride-1",
+    p_reason: "Teststorno",
+  });
+  const afterInsights = computeRideInsights(afterVoid.rides, afterVoid.members);
+  assert.equal(afterInsights.totalRides, 12);
+  assert.equal(
+    afterInsights.destinations.find((d) => d.label === "ETH Polyterrasse")
+      ?.count,
+    1,
+  );
+});
+
+test("Demo speichert Feedback idempotent und prüft Kategorien", () => {
+  const base = demoSnapshot();
+  const once = demoAction(base, "submit_feedback", {
+    p_request_id: "fb-1",
+    p_category: "idea",
+    p_message: "Favoriten beim Entsperren",
+    p_page: "Übersicht",
+  });
+  const twice = demoAction(once, "submit_feedback", {
+    p_request_id: "fb-1",
+    p_category: "idea",
+    p_message: "Favoriten beim Entsperren",
+    p_page: "Übersicht",
+  });
+  assert.equal(twice.feedback?.length, 1);
+  assert.equal(twice.feedback?.[0].message, "Favoriten beim Entsperren");
+  assert.throws(() =>
+    demoAction(base, "submit_feedback", {
+      p_request_id: "fb-bad",
+      p_category: "idea",
+      p_message: "   ",
+      p_page: "Übersicht",
+    }),
   );
 });

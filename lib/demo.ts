@@ -3,14 +3,18 @@ import {
   type Snapshot,
   type RpcArgs,
   type Action,
+  type FeedbackCategory,
 } from "./domain";
+import { roundCoord, validCoords } from "./location";
+
 const gid = "demo-group";
 export const DEMO_USER = "demo-oskar";
+
 export function demoSnapshot(): Snapshot {
-  const ago = (days: number, hours = 18) => {
+  const ago = (days: number, hours = 18, mins = 20) => {
     const d = new Date();
     d.setDate(d.getDate() - days);
-    d.setHours(hours, 20, 0, 0);
+    d.setHours(hours, mins, 0, 0);
     if (d > new Date()) d.setDate(d.getDate() - 1);
     return d.toISOString();
   };
@@ -22,32 +26,188 @@ export function demoSnapshot(): Snapshot {
     role: i === 0 ? ("admin" as const) : ("member" as const),
     active: true,
   }));
-  const rides = [
-    [0, 1, 14, 1],
-    [1, 1, 8, 0],
-    [2, 2, 19, 2],
-    [0, 3, 9, 0],
-    [1, 4, 12, 1],
-    [2, 5, 6, 0],
-    [0, 6, 18, 2],
-    [1, 7, 11, 0],
-    [2, 8, 15, 1],
-    [0, 10, 7, 0],
-    [1, 11, 21, 0],
-    [2, 12, 9, 1],
-  ].map(([m, d, drive, pause], i) => ({
-    id: `ride-${i}`,
-    group_id: gid,
-    member_id: members[m].id,
-    occurred_at: ago(d),
-    duration_seconds: drive * 60,
-    pause_seconds: pause * 60,
-    charged_seconds: (drive + pause) * 60,
-    note: i === 0 ? "Nach Hause vom Bahnhof" : "",
-    source: "manual" as const,
-    estimated_cost_rappen: (drive + pause) * 15,
-    voided_at: null,
-  }));
+  const seed: [
+    memberIdx: number,
+    daysAgo: number,
+    drive: number,
+    pause: number,
+    hour: number,
+    startLabel: string,
+    startLat: number,
+    startLng: number,
+    endLabel: string,
+    endLat: number,
+    endLng: number,
+  ][] = [
+    [
+      0,
+      1,
+      14,
+      1,
+      18,
+      "Zürich HB",
+      47.3779,
+      8.5403,
+      "Wiedikon Bhf",
+      47.3713,
+      8.5235,
+    ],
+    [
+      1,
+      1,
+      8,
+      0,
+      8,
+      "Stadelhofen",
+      47.3665,
+      8.5485,
+      "ETH Polyterrasse",
+      47.3763,
+      8.5476,
+    ],
+    [
+      2,
+      2,
+      19,
+      2,
+      22,
+      "Langstrasse",
+      47.3788,
+      8.5271,
+      "Oerlikon Bhf",
+      47.4115,
+      8.5441,
+    ],
+    [
+      0,
+      3,
+      9,
+      0,
+      8,
+      "Wiedikon Bhf",
+      47.3713,
+      8.5235,
+      "Zürich HB",
+      47.3779,
+      8.5403,
+    ],
+    [
+      1,
+      4,
+      12,
+      1,
+      18,
+      "ETH Polyterrasse",
+      47.3763,
+      8.5476,
+      "Seefeld",
+      47.3578,
+      8.5542,
+    ],
+    [
+      2,
+      5,
+      6,
+      0,
+      12,
+      "Hardbrücke",
+      47.3852,
+      8.5175,
+      "Limmatplatz",
+      47.3847,
+      8.5312,
+    ],
+    [0, 6, 18, 2, 19, "Zürich HB", 47.3779, 8.5403, "Seefeld", 47.3578, 8.5542],
+    [1, 7, 11, 0, 9, "Seefeld", 47.3578, 8.5542, "Zürich HB", 47.3779, 8.5403],
+    [
+      2,
+      8,
+      15,
+      1,
+      18,
+      "Oerlikon Bhf",
+      47.4115,
+      8.5441,
+      "Langstrasse",
+      47.3788,
+      8.5271,
+    ],
+    [
+      0,
+      10,
+      7,
+      0,
+      8,
+      "Wiedikon Bhf",
+      47.3713,
+      8.5235,
+      "Zürich HB",
+      47.3779,
+      8.5403,
+    ],
+    [
+      1,
+      11,
+      21,
+      0,
+      23,
+      "Langstrasse",
+      47.3788,
+      8.5271,
+      "Seefeld",
+      47.3578,
+      8.5542,
+    ],
+    [
+      2,
+      12,
+      9,
+      1,
+      17,
+      "Hardbrücke",
+      47.3852,
+      8.5175,
+      "Zürich HB",
+      47.3779,
+      8.5403,
+    ],
+  ];
+  const rides = seed.map(
+    (
+      [
+        m,
+        d,
+        drive,
+        pause,
+        hour,
+        startLabel,
+        startLat,
+        startLng,
+        endLabel,
+        endLat,
+        endLng,
+      ],
+      i,
+    ) => ({
+      id: `ride-${i}`,
+      group_id: gid,
+      member_id: members[m].id,
+      occurred_at: ago(d, hour),
+      duration_seconds: drive * 60,
+      pause_seconds: pause * 60,
+      charged_seconds: (drive + pause) * 60,
+      note: i === 0 ? "Nach Hause vom Bahnhof" : "",
+      source: "manual" as const,
+      estimated_cost_rappen: (drive + pause) * 15,
+      voided_at: null,
+      start_label: startLabel,
+      start_lat: startLat,
+      start_lng: startLng,
+      end_label: endLabel,
+      end_lat: endLat,
+      end_lng: endLng,
+    }),
+  );
   return {
     group: { id: gid, name: "Zürich Crew" },
     members,
@@ -93,8 +253,10 @@ export function demoSnapshot(): Snapshot {
         note: "Gemeinsames Minutenpaket",
       },
     ],
+    feedback: [],
   };
 }
+
 export function demoAction(
   current: Snapshot,
   action: Action,
@@ -112,6 +274,10 @@ export function demoAction(
     );
     const bought = eligible.reduce((n, p) => n + p.seconds, 0),
       price = eligible.reduce((n, p) => n + p.price_rappen, 0);
+    const sLat = typeof args.p_start_lat === "number" ? args.p_start_lat : null;
+    const sLng = typeof args.p_start_lng === "number" ? args.p_start_lng : null;
+    const eLat = typeof args.p_end_lat === "number" ? args.p_end_lat : null;
+    const eLng = typeof args.p_end_lng === "number" ? args.p_end_lng : null;
     data.rides.push({
       id,
       group_id: gid,
@@ -120,10 +286,16 @@ export function demoAction(
       duration_seconds: drive,
       pause_seconds: pause,
       charged_seconds: drive + pause,
-      note: String(args.p_note),
+      note: String(args.p_note ?? ""),
       source: "manual",
       estimated_cost_rappen: bought ? ((drive + pause) * price) / bought : null,
       voided_at: null,
+      start_label: String(args.p_start_label ?? "").trim(),
+      start_lat: validCoords(sLat, sLng) ? roundCoord(sLat) : null,
+      start_lng: validCoords(sLat, sLng) ? roundCoord(sLng!) : null,
+      end_label: String(args.p_end_label ?? "").trim(),
+      end_lat: validCoords(eLat, eLng) ? roundCoord(eLat) : null,
+      end_lng: validCoords(eLat, eLng) ? roundCoord(eLng!) : null,
     });
     data.entries.push({
       id: crypto.randomUUID(),
@@ -240,6 +412,24 @@ export function demoAction(
       m.role = args.p_role as "member" | "admin";
       m.active = Boolean(args.p_active);
     }
+  } else if (action === "submit_feedback") {
+    data.feedback ??= [];
+    if (data.feedback.some((f) => f.id === id)) return data;
+    const message = String(args.p_message ?? "").trim();
+    if (!message || message.length > 2000)
+      throw new Error("Bitte eine Nachricht mit 1 bis 2000 Zeichen eingeben.");
+    const category = String(args.p_category ?? "idea") as FeedbackCategory;
+    if (!["idea", "bug", "praise", "other"].includes(category))
+      throw new Error("Bitte eine gültige Feedback-Kategorie wählen.");
+    data.feedback.unshift({
+      id,
+      group_id: gid,
+      member_id: "demo-0",
+      category,
+      message,
+      page: String(args.p_page ?? ""),
+      created_at: now,
+    });
   }
   return data;
 }

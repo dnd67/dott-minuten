@@ -1,6 +1,13 @@
 "use client";
 import Link from "next/link";
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   ArrowDownLeft,
   ArrowRight,
@@ -13,10 +20,15 @@ import {
   History,
   LayoutDashboard,
   LoaderCircle,
+  LocateFixed,
   LogOut,
+  MapPin,
+  MessageSquare,
   Plus,
   RefreshCw,
+  Share2,
   ShieldCheck,
+  Sparkles,
   Ticket,
   TrendingUp,
   Users,
@@ -42,9 +54,41 @@ import {
   type RpcArgs,
   type Snapshot,
 } from "@/lib/domain";
+import {
+  clearActiveUnlock,
+  knownPlaceSuggestions,
+  loadActiveUnlock,
+  requestCurrentSpot,
+  saveActiveUnlock,
+  type ActiveUnlock,
+  type Spot,
+} from "@/lib/location";
+import { FeedbackDialog } from "./feedback-dialog";
+import { LocationStats } from "./location-stats";
+import {
+  isOnboardingDone,
+  markOnboardingDone,
+  OnboardingModal,
+} from "./onboarding-modal";
+import { ThemeCycleButton, ThemeSegmented } from "./theme-toggle";
 
 type Tab = "overview" | "rides" | "balance" | "stats" | "members";
-type Modal = "ride" | "credit" | "package" | "void" | "rename" | null;
+type Modal =
+  | "ride"
+  | "unlock"
+  | "credit"
+  | "package"
+  | "void"
+  | "rename"
+  | null;
+
+type RideSeed = {
+  drive?: string;
+  when?: string;
+  startSpot?: Spot;
+  fromUnlock?: boolean;
+};
+
 type Props = {
   data: Snapshot;
   groups: Group[];
@@ -55,6 +99,8 @@ type Props = {
   syncedAt: Date | null;
   error: string;
   busy: boolean;
+  autoOpenTour?: boolean;
+  onTourOpened?: () => void;
   mutate: (action: Action, args: RpcArgs) => Promise<string | boolean>;
   onGroup: (id: string) => void;
   onLogout: () => void;
@@ -62,6 +108,7 @@ type Props = {
   onRefresh: () => void;
   onResetDemo: () => void;
 };
+
 const tabs: { id: Tab; label: string; icon: typeof Zap }[] = [
   { id: "overview", label: "Übersicht", icon: LayoutDashboard },
   { id: "rides", label: "Fahrten", icon: History },
@@ -69,6 +116,7 @@ const tabs: { id: Tab; label: string; icon: typeof Zap }[] = [
   { id: "stats", label: "Statistik", icon: TrendingUp },
   { id: "members", label: "Mitglieder", icon: Users },
 ];
+
 const initials = (name: string) =>
   name
     .trim()
@@ -77,6 +125,7 @@ const initials = (name: string) =>
     .slice(0, 2)
     .join("")
     .toUpperCase();
+
 const zurichKey = (date: Date) =>
   new Intl.DateTimeFormat("sv-SE", {
     timeZone: "Europe/Zurich",
@@ -84,6 +133,16 @@ const zurichKey = (date: Date) =>
     month: "2-digit",
     day: "2-digit",
   }).format(date);
+
+const routeText = (r: Ride) => {
+  const s = r.start_label?.trim() ?? "";
+  const e = r.end_label?.trim() ?? "";
+  if (s && e) return `${s} → ${e}`;
+  if (e) return `Ziel: ${e}`;
+  if (s) return `Start: ${s}`;
+  return "";
+};
+
 export function Dashboard(p: Props) {
   const { data } = p;
   const [tab, setTab] = useState<Tab>("overview");
@@ -92,16 +151,55 @@ export function Dashboard(p: Props) {
       motion: boolean;
     } | null>(null),
     [voidRide, setVoidRide] = useState<Ride | null>(null);
+  const [rideSeed, setRideSeed] = useState<RideSeed | null>(null);
   const [renameMember, setRenameMember] = useState<Member | null>(null);
   const [rideStatus, setRideStatus] = useState("all");
   const [person, setPerson] = useState("all"),
     [period, setPeriod] = useState("all");
   const [code, setCode] = useState(""),
-    [copied, setCopied] = useState(false);
+    [copied, setCopied] = useState<"code" | "link" | null>(null);
+  const [tourOpen, setTourOpen] = useState(false);
+  const [tourBannerHidden, setTourBannerHidden] = useState(true);
+  const [feedbackOpen, setFeedbackOpen] = useState<{ motion: boolean } | null>(
+    null,
+  );
+  const [activeUnlock, setActiveUnlock] = useState<ActiveUnlock | null>(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+
+  useEffect(() => {
+    setTourBannerHidden(isOnboardingDone());
+  }, []);
+
+  useEffect(() => {
+    if (p.autoOpenTour) {
+      setTourOpen(true);
+      p.onTourOpened?.();
+    }
+  }, [p]);
+
+  useEffect(() => {
+    setActiveUnlock(loadActiveUnlock(data.group.id, p.userId));
+  }, [data.group.id, p.userId]);
+
+  useEffect(() => {
+    if (!activeUnlock) return;
+    setNowTick(Date.now());
+    const id = setInterval(() => setNowTick(Date.now()), 15000);
+    return () => clearInterval(id);
+  }, [activeUnlock]);
+
   const me = data.members.find((m) => m.user_id === p.userId && m.active);
   const admin = me?.role === "admin";
-  const own = summary(data, me?.id),
-    all = summary(data);
+
+  const memberSummaries = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof summary>>();
+    for (const m of data.members) map.set(m.id, summary(data, m.id));
+    return map;
+  }, [data]);
+
+  const own = (me && memberSummaries.get(me.id)) ?? summary(data, me?.id);
+  const all = useMemo(() => summary(data), [data]);
+
   const member = (id: string) => data.members.find((m) => m.id === id);
   const memberIndex = (id: string) =>
     Math.max(
@@ -113,6 +211,7 @@ export function Dashboard(p: Props) {
       {initials(m?.display_name ?? "?")}
     </span>
   );
+
   const filtered = all.rides.filter(
     (r) =>
       (person === "all" || r.member_id === person) &&
@@ -141,16 +240,51 @@ export function Dashboard(p: Props) {
             Date.now() - Number(period) * 86400000),
     );
   const rank = data.members
-    .map((m) => ({ ...m, ...summary(data, m.id) }))
+    .map((m) => ({
+      ...m,
+      ...(memberSummaries.get(m.id) ?? summary(data, m.id)),
+    }))
     .sort((a, b) => b.consumed - a.consumed);
+
   function navigate(next: Tab) {
     setTab(next);
     window.scrollTo({ top: 0, behavior: "instant" });
   }
-  function open(kind: Exclude<Modal, null>, clickCount: number) {
+  function open(
+    kind: Exclude<Modal, null>,
+    clickCount: number,
+    seed: RideSeed | null = null,
+  ) {
     p.onBeginAction();
+    setRideSeed(seed);
     setModal({ kind, motion: clickCount > 0 });
   }
+
+  const unlockElapsedMinutes = activeUnlock
+    ? Math.max(
+        1,
+        Math.round(
+          (nowTick - new Date(activeUnlock.startedAt).getTime()) / 60000,
+        ),
+      )
+    : 0;
+
+  function finishActiveUnlock(clickCount: number) {
+    if (!activeUnlock) return;
+    open("ride", clickCount, {
+      drive: String(unlockElapsedMinutes),
+      when: localDateTime(new Date(activeUnlock.startedAt)),
+      startSpot: {
+        label: activeUnlock.startLabel,
+        lat: activeUnlock.startLat,
+        lng: activeUnlock.startLng,
+      },
+      fromUnlock: true,
+    });
+  }
+
+  const currentTabLabel = tabs.find((t) => t.id === tab)?.label ?? "Übersicht";
+
   const filters = (
     <div className="filters">
       {tab === "rides" && (
@@ -199,6 +333,7 @@ export function Dashboard(p: Props) {
       </select>
     </div>
   );
+
   const table = (rides: Ride[], compact = false) => (
     <div className="table-scroll">
       <table>
@@ -222,83 +357,92 @@ export function Dashboard(p: Props) {
           </tr>
         </thead>
         <tbody>
-          {rides.map((r) => (
-            <tr key={r.id} className={r.voided_at ? "voided" : ""}>
-              <td>
-                <span className="person-cell">
-                  {avatar(member(r.member_id), "small")}
-                  <span>{member(r.member_id)?.display_name ?? "Mitglied"}</span>
-                </span>
-              </td>
-              <td>
-                <div>{dateLabel(r.occurred_at, true)}</div>
-                {r.voided_at ? (
-                  <>
-                    <small className="cancellation-reason">
-                      Storniert · {r.void_reason}
+          {rides.map((r) => {
+            const route = routeText(r);
+            return (
+              <tr key={r.id} className={r.voided_at ? "voided" : ""}>
+                <td>
+                  <span className="person-cell">
+                    {avatar(member(r.member_id), "small")}
+                    <span>
+                      {member(r.member_id)?.display_name ?? "Mitglied"}
+                    </span>
+                  </span>
+                </td>
+                <td>
+                  <div>{dateLabel(r.occurred_at, true)}</div>
+                  {route && (
+                    <small className="ride-route">
+                      <MapPin size={12} /> {route}
                     </small>
-                    {r.note && (
+                  )}
+                  {r.voided_at ? (
+                    <>
                       <small className="cancellation-reason">
-                        Notiz: {r.note}
+                        Storniert · {r.void_reason}
                       </small>
-                    )}
-                    {!compact && (
-                      <small className="cancellation-details">
-                        Storniert am {dateLabel(r.voided_at, true)} von{" "}
-                        {member(r.voided_by_member_id ?? "")?.display_name ??
-                          "Person nicht hinterlegt"}
-                        <br />+{minutes(r.charged_seconds)} Min. zurückgebucht
-                      </small>
-                    )}
-                  </>
-                ) : (
-                  r.note && <small>{r.note}</small>
-                )}
-              </td>
-              <td>
-                {minutes(r.duration_seconds)} <span className="unit">Min.</span>
-              </td>
-              <td className="optional-column">
-                {minutes(r.pause_seconds)} <span className="unit">Min.</span>
-              </td>
-              <td>
-                <span className={`pill ${r.voided_at ? "muted" : "active"}`}>
-                  {minutes(r.charged_seconds)} Min.
-                  {r.voided_at ? " · storniert" : ""}
-                </span>
-              </td>
-              {!compact && (
-                <>
-                  <td>
-                    {r.voided_at ? (
-                      <span className="unit">Entfällt</span>
-                    ) : r.estimated_cost_rappen === null ? (
-                      <span className="unit">Offen</span>
-                    ) : (
-                      <>
-                        <span>≈ {chf(r.estimated_cost_rappen)}</span>
-                      </>
-                    )}
-                  </td>
-                  {admin && (
+                      {r.note && (
+                        <small className="cancellation-reason">
+                          Notiz: {r.note}
+                        </small>
+                      )}
+                      {!compact && (
+                        <small className="cancellation-details">
+                          Storniert am {dateLabel(r.voided_at, true)} von{" "}
+                          {member(r.voided_by_member_id ?? "")?.display_name ??
+                            "Person nicht hinterlegt"}
+                          <br />+{minutes(r.charged_seconds)} Min. zurückgebucht
+                        </small>
+                      )}
+                    </>
+                  ) : (
+                    r.note && <small>{r.note}</small>
+                  )}
+                </td>
+                <td>
+                  {minutes(r.duration_seconds)}{" "}
+                  <span className="unit">Min.</span>
+                </td>
+                <td className="optional-column">
+                  {minutes(r.pause_seconds)} <span className="unit">Min.</span>
+                </td>
+                <td>
+                  <span className={`pill ${r.voided_at ? "muted" : "active"}`}>
+                    {minutes(r.charged_seconds)} Min.
+                    {r.voided_at ? " · storniert" : ""}
+                  </span>
+                </td>
+                {!compact && (
+                  <>
                     <td>
-                      {!r.voided_at && (
-                        <button
-                          className="text-link danger"
-                          onClick={(e) => {
-                            setVoidRide(r);
-                            open("void", e.detail);
-                          }}
-                        >
-                          Stornieren
-                        </button>
+                      {r.voided_at ? (
+                        <span className="unit">Entfällt</span>
+                      ) : r.estimated_cost_rappen === null ? (
+                        <span className="unit">Offen</span>
+                      ) : (
+                        <span>≈ {chf(r.estimated_cost_rappen)}</span>
                       )}
                     </td>
-                  )}
-                </>
-              )}
-            </tr>
-          ))}
+                    {admin && (
+                      <td>
+                        {!r.voided_at && (
+                          <button
+                            className="text-link danger"
+                            onClick={(e) => {
+                              setVoidRide(r);
+                              open("void", e.detail);
+                            }}
+                          >
+                            Stornieren
+                          </button>
+                        )}
+                      </td>
+                    )}
+                  </>
+                )}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       {rides.length === 0 && (
@@ -309,6 +453,7 @@ export function Dashboard(p: Props) {
       )}
     </div>
   );
+
   const rideButton = (
     <button
       className="button primary"
@@ -319,6 +464,25 @@ export function Dashboard(p: Props) {
       Fahrt eintragen
     </button>
   );
+
+  const unlockButton = (
+    <button
+      className="button pass-secondary"
+      onClick={(e) =>
+        activeUnlock ? finishActiveUnlock(e.detail) : open("unlock", e.detail)
+      }
+      disabled={!me}
+    >
+      <LocateFixed size={17} />
+      {activeUnlock ? "Fahrt beenden" : "Dott entsperren"}
+    </button>
+  );
+
+  const inviteUrl =
+    code && typeof window !== "undefined"
+      ? `${window.location.origin}/?invite=${encodeURIComponent(code)}`
+      : "";
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -372,6 +536,14 @@ export function Dashboard(p: Props) {
           ))}
         </nav>
         <div className="sidebar-bottom">
+          <button
+            type="button"
+            className="nav-item sidebar-util"
+            onClick={(e) => setFeedbackOpen({ motion: e.detail > 0 })}
+          >
+            <MessageSquare size={18} />
+            <span>Feedback</span>
+          </button>
           <button className="profile" onClick={p.onLogout} disabled={p.busy}>
             {avatar(me)}
             <span>
@@ -387,8 +559,7 @@ export function Dashboard(p: Props) {
       <div className="main-shell">
         <header className="topbar">
           <span className="breadcrumb">
-            {data.group.name} <span>/</span>{" "}
-            <strong>{tabs.find((t) => t.id === tab)?.label}</strong>
+            {data.group.name} <span>/</span> <strong>{currentTabLabel}</strong>
           </span>
           <div className="topbar-right">
             <span
@@ -403,6 +574,16 @@ export function Dashboard(p: Props) {
                     ? "Live verbunden"
                     : "Regelmässiger Abgleich"}
             </span>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Feedback geben"
+              title="Feedback geben"
+              onClick={(e) => setFeedbackOpen({ motion: e.detail > 0 })}
+            >
+              <MessageSquare size={16} />
+            </button>
+            <ThemeCycleButton />
             <button
               className="icon-button"
               aria-label="Daten neu laden"
@@ -438,7 +619,7 @@ export function Dashboard(p: Props) {
             <div className="page-heading">
               <div>
                 <span className="eyebrow">{data.group.name.toUpperCase()}</span>
-                <h1>{tabs.find((t) => t.id === tab)?.label}</h1>
+                <h1>{currentTabLabel}</h1>
               </div>
               {rideButton}
             </div>
@@ -448,6 +629,89 @@ export function Dashboard(p: Props) {
               <h1 className="overview-heading">
                 Hoi {me?.display_name ?? "zusammen"}
               </h1>
+
+              {!tourBannerHidden && (
+                <section className="onboarding-banner" aria-label="Einführung">
+                  <div className="onboarding-banner-text">
+                    <span className="onboarding-badge">
+                      <Sparkles size={15} /> Neu im Minutenclub
+                    </span>
+                    <strong>
+                      Entdecke Minutenpass, Dott-Entsperrung &amp;
+                      Standort-Schutz
+                    </strong>
+                    <p>
+                      Kurze interaktive Tour in 3 Schritten – jederzeit
+                      überspringbar.
+                    </p>
+                  </div>
+                  <div className="onboarding-banner-actions">
+                    <button
+                      type="button"
+                      className="button secondary compact-btn"
+                      onClick={() => setTourOpen(true)}
+                    >
+                      Tour starten <ArrowRight size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label="Einführung ausblenden"
+                      onClick={() => {
+                        markOnboardingDone();
+                        setTourBannerHidden(true);
+                      }}
+                    >
+                      <X size={17} />
+                    </button>
+                  </div>
+                </section>
+              )}
+
+              {activeUnlock && (
+                <section
+                  className="unlock-live-card"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <div className="unlock-live-info">
+                    <span className="unlock-pulse" aria-hidden="true" />
+                    <div>
+                      <strong>
+                        Scooter entsperrt · ca. {unlockElapsedMinutes} Min.
+                        unterwegs
+                      </strong>
+                      <small>
+                        Gestartet {dateLabel(activeUnlock.startedAt, true)}
+                        {activeUnlock.startLabel
+                          ? ` · Start: ${activeUnlock.startLabel}`
+                          : " · Ohne Startort"}
+                        {" · Kein Hintergrund-GPS aktiv"}
+                      </small>
+                    </div>
+                  </div>
+                  <div className="unlock-live-actions">
+                    <button
+                      type="button"
+                      className="button primary compact-btn"
+                      onClick={(e) => finishActiveUnlock(e.detail)}
+                    >
+                      <Check size={16} /> Fahrt abschliessen
+                    </button>
+                    <button
+                      type="button"
+                      className="text-link"
+                      onClick={() => {
+                        clearActiveUnlock();
+                        setActiveUnlock(null);
+                      }}
+                    >
+                      Verwerfen
+                    </button>
+                  </div>
+                </section>
+              )}
+
               <div className="overview-summary">
                 <section
                   className="balance-card"
@@ -478,7 +742,10 @@ export function Dashboard(p: Props) {
                         />
                       </div>
                     </div>
-                    {rideButton}
+                    <div className="pass-actions">
+                      {unlockButton}
+                      {rideButton}
+                    </div>
                   </div>
                 </section>
                 <section className="metric-grid overview-metrics">
@@ -532,7 +799,7 @@ export function Dashboard(p: Props) {
                           </strong>
                           <div className="progress-track" aria-hidden="true">
                             <span
-                              className={`progress-fill color-${memberIndex(m.id)}`}
+                              className="progress-fill"
                               style={{
                                 width: `${m.quota ? Math.min(100, Math.max(0, (m.balance / m.quota) * 100)) : 0}%`,
                               }}
@@ -648,25 +915,23 @@ export function Dashboard(p: Props) {
                   }
                 />
                 <div className="account-grid">
-                  {data.members.map((m) => (
-                    <div key={m.id} className="account-item">
-                      {avatar(m)}
-                      <div>
-                        <strong>{m.display_name}</strong>
-                        <small>
-                          {m.active ? "Minutenkonto" : "Deaktiviert"}
-                        </small>
+                  {data.members.map((m) => {
+                    const s = memberSummaries.get(m.id) ?? summary(data, m.id);
+                    return (
+                      <div key={m.id} className="account-item">
+                        {avatar(m)}
+                        <div>
+                          <strong>{m.display_name}</strong>
+                          <small>
+                            {m.active ? "Minutenkonto" : "Deaktiviert"}
+                          </small>
+                        </div>
+                        <strong className={s.balance < 0 ? "negative" : ""}>
+                          {minutes(s.balance)} <small>Min.</small>
+                        </strong>
                       </div>
-                      <strong
-                        className={
-                          summary(data, m.id).balance < 0 ? "negative" : ""
-                        }
-                      >
-                        {minutes(summary(data, m.id).balance)}{" "}
-                        <small>Min.</small>
-                      </strong>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
               <section className="panel">
@@ -693,7 +958,7 @@ export function Dashboard(p: Props) {
                         <th>Bezahlt von</th>
                         <th>Minuten</th>
                         <th>Preis</th>
-                        <th>Beiträge & Minutenanteile</th>
+                        <th>Beiträge &amp; Minutenanteile</th>
                         <th className="optional-column">Notiz</th>
                       </tr>
                     </thead>
@@ -827,6 +1092,14 @@ export function Dashboard(p: Props) {
                   note="Inklusive Pausen"
                 />
               </section>
+
+              <LocationStats
+                rides={filtered}
+                members={data.members}
+                personFilter={person}
+                renderAvatar={avatar}
+              />
+
               <section className="panel">
                 <PanelHeading
                   title="Wer fährt wie viel?"
@@ -908,7 +1181,7 @@ export function Dashboard(p: Props) {
                           const result = await p.mutate("create_invite", {});
                           if (typeof result === "string") {
                             setCode(result);
-                            setCopied(false);
+                            setCopied(null);
                           }
                         }}
                       >
@@ -926,10 +1199,10 @@ export function Dashboard(p: Props) {
                         : "Einladungscode · 7 Tage gültig"}
                     </strong>
                     <p>
-                      Freunde melden sich auf derselben Webseite an und wählen
-                      «Ich habe schon einen Einladungscode».
+                      Teile direkt den Einladungslink – nach dem E-Mail-Login
+                      wird der Code automatisch übernommen.
                     </p>
-                    <div>
+                    <div className="invite-code-row">
                       <code>{code}</code>
                       <button
                         className="icon-button"
@@ -937,18 +1210,57 @@ export function Dashboard(p: Props) {
                         onClick={async () => {
                           try {
                             await navigator.clipboard.writeText(code);
-                            setCopied(true);
+                            setCopied("code");
                           } catch {
-                            setCopied(false);
+                            setCopied(null);
                           }
                         }}
                       >
-                        {copied ? <Check size={18} /> : <Copy size={18} />}
+                        {copied === "code" ? (
+                          <Check size={18} />
+                        ) : (
+                          <Copy size={18} />
+                        )}
                       </button>
+                      {inviteUrl && (
+                        <button
+                          type="button"
+                          className="button secondary compact-btn"
+                          onClick={async () => {
+                            if (typeof navigator.share === "function") {
+                              try {
+                                await navigator.share({
+                                  title: `${data.group.name} · Minutenclub`,
+                                  text: `Komm in unseren Minutenclub «${data.group.name}»:`,
+                                  url: inviteUrl,
+                                });
+                                return;
+                              } catch {
+                                /* Fallback auf Zwischenablage */
+                              }
+                            }
+                            try {
+                              await navigator.clipboard.writeText(inviteUrl);
+                              setCopied("link");
+                            } catch {
+                              setCopied(null);
+                            }
+                          }}
+                        >
+                          {copied === "link" ? (
+                            <Check size={15} />
+                          ) : (
+                            <Share2 size={15} />
+                          )}
+                          {copied === "link"
+                            ? "Link kopiert"
+                            : "Einladungslink teilen"}
+                        </button>
+                      )}
                     </div>
                     <small>
-                      Wer den Code hat, kann beitreten. Nur mit eurer Crew
-                      teilen.
+                      Wer den Link oder Code hat, kann beitreten. Nur mit eurer
+                      Crew teilen.
                     </small>
                   </div>
                 )}
@@ -1014,13 +1326,20 @@ export function Dashboard(p: Props) {
                               <button
                                 className="text-link"
                                 disabled={p.busy || m.id === me?.id}
-                                onClick={() =>
+                                onClick={() => {
+                                  if (
+                                    m.active &&
+                                    !window.confirm(
+                                      `${m.display_name} wirklich deaktivieren? Der Zugriff auf die Gruppe wird gesperrt, bisherige Buchungen bleiben erhalten.`,
+                                    )
+                                  )
+                                    return;
                                   void p.mutate("update_member", {
                                     p_member_id: m.id,
                                     p_role: m.role,
                                     p_active: !m.active,
-                                  })
-                                }
+                                  });
+                                }}
                               >
                                 {m.active ? "Deaktivieren" : "Aktivieren"}
                               </button>
@@ -1042,7 +1361,7 @@ export function Dashboard(p: Props) {
               <section className="panel">
                 <PanelHeading
                   title={`Dein Zugang · ${me?.display_name ?? "Mitglied"}`}
-                  description="Deine Anmeldung bleibt auf diesem Gerät gespeichert, bis du dich abmeldest."
+                  description="Darstellung, Einführung, Feedback und Sitzung auf diesem Gerät."
                   aside={
                     <button
                       className="button secondary"
@@ -1054,6 +1373,41 @@ export function Dashboard(p: Props) {
                     </button>
                   }
                 />
+                <div className="account-preferences">
+                  <div className="preference-row">
+                    <div>
+                      <strong>Darstellung</strong>
+                      <small>Automatisch nach Gerät, Hell oder Dunkel</small>
+                    </div>
+                    <ThemeSegmented />
+                  </div>
+                  <div className="preference-row">
+                    <div>
+                      <strong>Einführung &amp; Rückmeldung</strong>
+                      <small>
+                        Interaktive Tour nochmals öffnen oder Feedback senden
+                      </small>
+                    </div>
+                    <div className="preference-buttons">
+                      <button
+                        type="button"
+                        className="button secondary compact-btn"
+                        onClick={() => setTourOpen(true)}
+                      >
+                        <Sparkles size={15} /> Einführung
+                      </button>
+                      <button
+                        type="button"
+                        className="button secondary compact-btn"
+                        onClick={(e) =>
+                          setFeedbackOpen({ motion: e.detail > 0 })
+                        }
+                      >
+                        <MessageSquare size={15} /> Feedback
+                      </button>
+                    </div>
+                  </div>
+                </div>
                 {p.groups.length > 1 && (
                   <div className="panel-footnote">
                     <label>
@@ -1121,17 +1475,70 @@ export function Dashboard(p: Props) {
           motion={modal.motion}
           data={data}
           me={me}
+          seed={rideSeed}
           voidRide={voidRide}
           renameMember={renameMember}
           busy={p.busy}
           remoteError={p.error}
-          close={() => setModal(null)}
+          close={() => {
+            setModal(null);
+            setRideSeed(null);
+          }}
+          onStartUnlock={(spot) => {
+            const next: ActiveUnlock = {
+              groupId: data.group.id,
+              userId: p.userId,
+              startedAt: new Date().toISOString(),
+              startLabel: spot.label.trim(),
+              startLat: spot.lat,
+              startLng: spot.lng,
+            };
+            saveActiveUnlock(next);
+            setActiveUnlock(next);
+          }}
+          onFinishUnlock={() => {
+            clearActiveUnlock();
+            setActiveUnlock(null);
+          }}
           onSave={p.mutate}
+        />
+      )}
+      {tourOpen && (
+        <OnboardingModal
+          motion={true}
+          groupName={data.group.name}
+          memberName={me?.display_name}
+          onClose={() => {
+            setTourOpen(false);
+            setTourBannerHidden(true);
+          }}
+          onStartUnlock={
+            me
+              ? () => {
+                  open("unlock", 1);
+                }
+              : undefined
+          }
+        />
+      )}
+      {feedbackOpen && (
+        <FeedbackDialog
+          motion={feedbackOpen.motion}
+          demo={p.demo}
+          currentPage={currentTabLabel}
+          me={me}
+          members={data.members}
+          remoteFeedback={data.feedback ?? []}
+          busy={p.busy}
+          remoteError={p.error}
+          onSave={p.mutate}
+          onClose={() => setFeedbackOpen(null)}
         />
       )}
     </div>
   );
 }
+
 function Metric({
   icon,
   label,
@@ -1159,6 +1566,7 @@ function Metric({
     </div>
   );
 }
+
 function PanelHeading({
   title,
   description,
@@ -1178,6 +1586,7 @@ function PanelHeading({
     </div>
   );
 }
+
 function Empty({ title, text }: { title: string; text: string }) {
   return (
     <div className="empty">
@@ -1189,6 +1598,7 @@ function Empty({ title, text }: { title: string; text: string }) {
     </div>
   );
 }
+
 function ActivityChart({ rides }: { rides: Ride[] }) {
   const days = Array.from({ length: 14 }, (_, i) => {
     const d = new Date();
@@ -1245,42 +1655,63 @@ function ActivityChart({ rides }: { rides: Ride[] }) {
     </div>
   );
 }
+
 function EntryDialog({
   kind,
   motion,
   data,
   me,
+  seed,
   voidRide,
   renameMember,
   busy,
   remoteError,
   close,
+  onStartUnlock,
+  onFinishUnlock,
   onSave,
 }: {
   kind: Exclude<Modal, null>;
   motion: boolean;
   data: Snapshot;
   me?: Member;
+  seed: RideSeed | null;
   voidRide: Ride | null;
   renameMember: Member | null;
   busy: boolean;
   remoteError: string;
   close: () => void;
+  onStartUnlock: (spot: Spot) => void;
+  onFinishUnlock: () => void;
   onSave: Props["mutate"];
 }) {
   const dialog = useRef<HTMLDialogElement>(null),
     first = useRef<HTMLInputElement>(null);
   const pointerSubmit = useRef(false);
-  const [drive, setDrive] = useState(""),
+  const [drive, setDrive] = useState(() => seed?.drive ?? ""),
     [pause, setPause] = useState("0"),
     [error, setError] = useState("");
-  const [when] = useState(() => localDateTime());
+  const [when] = useState(() => seed?.when ?? localDateTime());
+  const [startSpot, setStartSpot] = useState<Spot>(
+    () => seed?.startSpot ?? { label: "", lat: null, lng: null },
+  );
+  const [endSpot, setEndSpot] = useState<Spot>({
+    label: "",
+    lat: null,
+    lng: null,
+  });
+  const [locating, setLocating] = useState<"start" | "end" | null>(null);
   const [packageMinutes, setPackageMinutes] = useState("");
   const [packagePrice, setPackagePrice] = useState("");
   const [contributions, setContributions] = useState<Record<string, string>>(
     {},
   );
   const [activeMembers] = useState(() => data.members.filter((m) => m.active));
+  const placeSuggestions = useMemo(
+    () => knownPlaceSuggestions(data.rides, 5),
+    [data.rides],
+  );
+
   let allocation: ReturnType<typeof allocateMinutes> = [],
     allocationMessage = "",
     contributedRappen = 0,
@@ -1303,32 +1734,58 @@ function EntryDialog({
         e instanceof Error ? e.message : "Bitte Eingaben prüfen.";
     }
   }
+
   useLayoutEffect(() => {
     dialog.current?.showModal();
     first.current?.focus();
     const node = dialog.current;
     return () => node?.close();
   }, []);
+
+  async function fetchSpot(target: "start" | "end") {
+    setError("");
+    setLocating(target);
+    try {
+      const spot = await requestCurrentSpot(data.rides);
+      if (target === "start") setStartSpot(spot);
+      else setEndSpot(spot);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Standort konnte nicht gelesen werden.",
+      );
+    } finally {
+      setLocating(null);
+    }
+  }
+
   const title =
-    kind === "ride"
-      ? "Fahrt eintragen"
-      : kind === "credit"
-        ? "Minuten gutschreiben."
-        : kind === "package"
-          ? "Guthaben aufladen"
-          : kind === "rename"
-            ? "Name ändern."
-            : "Fahrt stornieren.";
+    kind === "unlock"
+      ? "Dott entsperren"
+      : kind === "ride"
+        ? "Fahrt eintragen"
+        : kind === "credit"
+          ? "Minuten gutschreiben"
+          : kind === "package"
+            ? "Guthaben aufladen"
+            : kind === "rename"
+              ? "Name ändern"
+              : "Fahrt stornieren";
+
   const description =
-    kind === "ride"
-      ? "Trage die Zeiten aus deinen Fahrtdetails ein. Die Pause zählt mit."
-      : kind === "credit"
-        ? "Kostenlose interne Gutschrift ohne Paketkauf. Für bezahlte Minuten nutze Guthaben aufladen."
-        : kind === "package"
-          ? "Erfasse Paketminuten, Preis und die Beiträge eurer Crew. Eure Minutenanteile werden direkt gutgeschrieben."
-          : kind === "rename"
-            ? "Der neue Name gilt in der ganzen Gruppe. Fahrten und Guthaben bleiben derselben Person zugeordnet."
-            : "Die Minuten werden mit einer Gegenbuchung zurückgegeben. Die ursprüngliche Fahrt bleibt sichtbar.";
+    kind === "unlock"
+      ? "Merkt deine Startzeit und auf Wunsch deinen aktuellen Startort. Während der Fahrt findet keinerlei Ortung statt."
+      : kind === "ride"
+        ? "Trage die Zeiten aus deinen Fahrtdetails ein. Die Pause zählt mit, Orte sind freiwillig."
+        : kind === "credit"
+          ? "Kostenlose interne Gutschrift ohne Paketkauf. Für bezahlte Minuten nutze Guthaben aufladen."
+          : kind === "package"
+            ? "Erfasse Paketminuten, Preis und die Beiträge eurer Crew. Eure Minutenanteile werden direkt gutgeschrieben."
+            : kind === "rename"
+              ? "Der neue Name gilt in der ganzen Gruppe. Fahrten und Guthaben bleiben derselben Person zugeordnet."
+              : "Die Minuten werden mit einer Gegenbuchung zurückgegeben. Die ursprüngliche Fahrt bleibt sichtbar.";
+
   async function dismiss(animate: boolean) {
     const node = dialog.current;
     if (!node || node.dataset.closing) return;
@@ -1340,24 +1797,49 @@ function EntryDialog({
     }
     if (node.isConnected) close();
   }
+
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (busy || dialog.current?.dataset.closing) return;
+    if (busy || locating || dialog.current?.dataset.closing) return;
     setError("");
     const f = new FormData(e.currentTarget);
     const animate = pointerSubmit.current;
     pointerSubmit.current = false;
     try {
+      if (kind === "unlock") {
+        const cleanLabel = startSpot.label.trim();
+        if (cleanLabel.length > 120)
+          throw new Error("Ortsname darf höchstens 120 Zeichen lang sein.");
+        onStartUnlock({
+          label: cleanLabel,
+          lat: cleanLabel ? startSpot.lat : null,
+          lng: cleanLabel ? startSpot.lng : null,
+        });
+        await dismiss(animate);
+        return;
+      }
+
       let saved: boolean | string = false;
       const str = (k: string) => String(f.get(k) ?? "");
       if (kind === "ride") {
         const draft = rideDraft(drive, pause);
+        const sLabel = startSpot.label.trim();
+        const eLabel = endSpot.label.trim();
+        if (sLabel.length > 120 || eLabel.length > 120)
+          throw new Error("Ortsnamen dürfen höchstens 120 Zeichen lang sein.");
         saved = await onSave("record_ride", {
           p_drive_minutes: draft.duration_seconds / 60,
           p_pause_minutes: draft.pause_seconds / 60,
           p_occurred_at: new Date(str("when")).toISOString(),
           p_note: str("note"),
+          p_start_label: sLabel,
+          p_start_lat: sLabel ? startSpot.lat : null,
+          p_start_lng: sLabel ? startSpot.lng : null,
+          p_end_label: eLabel,
+          p_end_lat: eLabel ? endSpot.lat : null,
+          p_end_lng: eLabel ? endSpot.lng : null,
         });
+        if (saved && seed?.fromUnlock) onFinishUnlock();
       } else if (kind === "credit")
         saved = await onSave("credit_minutes", {
           p_member_id: str("member"),
@@ -1395,6 +1877,7 @@ function EntryDialog({
       setError(err instanceof Error ? err.message : "Bitte Eingaben prüfen.");
     }
   }
+
   return (
     <dialog
       ref={dialog}
@@ -1420,7 +1903,9 @@ function EntryDialog({
           <X size={22} />
         </button>
         <span className="dialog-icon">
-          {kind === "ride" ? (
+          {kind === "unlock" ? (
+            <LocateFixed size={24} />
+          ) : kind === "ride" ? (
             <Zap size={24} />
           ) : kind === "void" ? (
             <History size={24} />
@@ -1433,6 +1918,70 @@ function EntryDialog({
         <h2 id="dialog-title">{title}</h2>
         <p>{description}</p>
         <form onSubmit={submit}>
+          {kind === "unlock" && (
+            <>
+              <div className="notice privacy-inline-note">
+                <ShieldCheck size={18} />
+                <span>
+                  Standort nur bei Verwendung: GPS wird ausschliesslich einmalig
+                  beim Tippen auf den Standort-Button gelesen.
+                </span>
+              </div>
+
+              <button
+                type="button"
+                className="button secondary wide location-trigger-btn"
+                disabled={locating !== null}
+                onClick={() => void fetchSpot("start")}
+              >
+                {locating === "start" ? (
+                  <LoaderCircle size={18} className="spin" />
+                ) : (
+                  <LocateFixed size={18} />
+                )}
+                {locating === "start"
+                  ? "Standort wird einmalig gelesen …"
+                  : "Aktuellen Startort übernehmen"}
+              </button>
+
+              <label>
+                <span>
+                  Startort <span className="optional">optional</span>
+                </span>
+                <input
+                  ref={first}
+                  name="unlock_start"
+                  maxLength={120}
+                  value={startSpot.label}
+                  onChange={(e) =>
+                    setStartSpot((old) => ({
+                      label: e.target.value,
+                      lat: e.target.value.trim() ? old.lat : null,
+                      lng: e.target.value.trim() ? old.lng : null,
+                    }))
+                  }
+                  placeholder="z. B. Zürich HB oder leer lassen"
+                />
+              </label>
+
+              <div className="quick-spots">
+                <small>Schnellauswahl:</small>
+                <div className="chip-row">
+                  {placeSuggestions.map((spot) => (
+                    <button
+                      key={spot.label}
+                      type="button"
+                      className={`chip ${startSpot.label === spot.label ? "active" : ""}`}
+                      onClick={() => setStartSpot(spot)}
+                    >
+                      {spot.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
           {kind === "rename" && (
             <label>
               Anzeigename
@@ -1446,6 +1995,7 @@ function EntryDialog({
               />
             </label>
           )}
+
           {kind === "ride" && (
             <>
               <div className="selected-person">
@@ -1492,10 +2042,105 @@ function EntryDialog({
               </div>
               <div className="sum-line">
                 <span>Wird vom Guthaben abgezogen</span>
-                <strong>{Number(drive || 0) + Number(pause || 0)} Min.</strong>
+                <strong>
+                  {Math.max(0, Math.trunc(Number(drive || 0))) +
+                    Math.max(0, Math.trunc(Number(pause || 0)))}{" "}
+                  Min.
+                </strong>
               </div>
+
+              <fieldset className="location-fieldset">
+                <legend>Strecke &amp; Standort (optional)</legend>
+                <p>
+                  Einmalige Ortung nur beim Antippen – für eure Ziel- und
+                  Uhrzeit-Statistik.
+                </p>
+                <div className="form-row">
+                  <div className="field-group">
+                    <label htmlFor="ride-start-label">Startort</label>
+                    <div className="location-input-wrap">
+                      <input
+                        id="ride-start-label"
+                        name="start_label"
+                        maxLength={120}
+                        value={startSpot.label}
+                        onChange={(e) =>
+                          setStartSpot((old) => ({
+                            label: e.target.value,
+                            lat: e.target.value.trim() ? old.lat : null,
+                            lng: e.target.value.trim() ? old.lng : null,
+                          }))
+                        }
+                        placeholder="z. B. Zürich HB"
+                      />
+                      <button
+                        type="button"
+                        className="icon-button locate-inline-btn"
+                        aria-label="Aktuellen Startort einmalig erfassen"
+                        title="Aktuellen Startort einmalig erfassen"
+                        disabled={locating !== null}
+                        onClick={() => void fetchSpot("start")}
+                      >
+                        {locating === "start" ? (
+                          <LoaderCircle size={16} className="spin" />
+                        ) : (
+                          <LocateFixed size={16} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="field-group">
+                    <label htmlFor="ride-end-label">Zielort</label>
+                    <div className="location-input-wrap">
+                      <input
+                        id="ride-end-label"
+                        name="end_label"
+                        maxLength={120}
+                        value={endSpot.label}
+                        onChange={(e) =>
+                          setEndSpot((old) => ({
+                            label: e.target.value,
+                            lat: e.target.value.trim() ? old.lat : null,
+                            lng: e.target.value.trim() ? old.lng : null,
+                          }))
+                        }
+                        placeholder="z. B. Seefeld"
+                      />
+                      <button
+                        type="button"
+                        className="icon-button locate-inline-btn"
+                        aria-label="Aktuellen Zielort einmalig erfassen"
+                        title="Aktuellen Zielort einmalig erfassen"
+                        disabled={locating !== null}
+                        onClick={() => void fetchSpot("end")}
+                      >
+                        {locating === "end" ? (
+                          <LoaderCircle size={16} className="spin" />
+                        ) : (
+                          <LocateFixed size={16} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="chip-row">
+                  {placeSuggestions.map((spot) => (
+                    <button
+                      key={spot.label}
+                      type="button"
+                      className={`chip ${endSpot.label === spot.label ? "active" : ""}`}
+                      onClick={() => setEndSpot(spot)}
+                    >
+                      → {spot.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
             </>
           )}
+
           {(kind === "credit" || kind === "package") && (
             <>
               <label>
@@ -1546,6 +2191,7 @@ function EntryDialog({
               )}
             </>
           )}
+
           {kind === "package" && (
             <fieldset className="contribution-fields">
               <legend>Wer hat wie viel beigetragen?</legend>
@@ -1594,6 +2240,7 @@ function EntryDialog({
               </small>
             </fieldset>
           )}
+
           {(kind === "ride" || kind === "package") && (
             <>
               <label>
@@ -1622,6 +2269,7 @@ function EntryDialog({
               </label>
             </>
           )}
+
           {(kind === "credit" || kind === "void") && (
             <label>
               Grund
@@ -1638,11 +2286,13 @@ function EntryDialog({
               />
             </label>
           )}
+
           {(error || remoteError) && (
             <div className="notice error" role="alert">
               {error || remoteError}
             </div>
           )}
+
           <div className="dialog-actions">
             <button
               className="button secondary"
@@ -1657,7 +2307,7 @@ function EntryDialog({
                 pointerSubmit.current = e.detail > 0;
               }}
               className={`button ${kind === "void" ? "destructive" : "primary"}`}
-              disabled={busy}
+              disabled={busy || locating !== null}
             >
               {busy ? (
                 <LoaderCircle size={18} className="spin" />
@@ -1668,7 +2318,9 @@ function EntryDialog({
                 ? "Wird gespeichert …"
                 : kind === "void"
                   ? "Stornieren"
-                  : "Speichern"}
+                  : kind === "unlock"
+                    ? "Fahrt starten"
+                    : "Speichern"}
             </button>
           </div>
         </form>
