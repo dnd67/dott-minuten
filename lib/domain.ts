@@ -66,6 +66,23 @@ export type FeedbackItem = {
   page: string;
   created_at: string;
 };
+export type UserAccount = {
+  user_id: string;
+  username: string;
+  password_updated_at: string;
+};
+export type PasswordResetRequest = {
+  id: string;
+  group_id: string;
+  member_id: string;
+  target_user_id: string;
+  username: string;
+  note: string;
+  status: "open" | "completed" | "dismissed";
+  requested_at: string;
+  resolved_at: string | null;
+  resolved_by_member_id?: string | null;
+};
 export type Snapshot = {
   group: Group;
   members: Member[];
@@ -74,6 +91,8 @@ export type Snapshot = {
   packages: Package[];
   contributions?: Contribution[];
   feedback?: FeedbackItem[];
+  accounts?: UserAccount[];
+  reset_requests?: PasswordResetRequest[];
 };
 export type Action =
   | "record_ride"
@@ -84,7 +103,8 @@ export type Action =
   | "rename_member"
   | "update_member"
   | "create_invite"
-  | "submit_feedback";
+  | "submit_feedback"
+  | "dismiss_password_reset";
 export type RpcArgs = Record<
   string,
   string | number | boolean | null | ContributionInput[]

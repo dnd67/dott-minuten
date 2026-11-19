@@ -702,6 +702,53 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
       );
     },
   );
+  await t.test(
+    "Benutzerkonten und Passwort-Zurücksetzungen sind per RLS nach Rolle geschützt",
+    async () => {
+      await db.exec("reset role");
+      await db.query(
+        "insert into public.user_accounts(user_id,username) values($1,'oskar'),($2,'august')",
+        [owner, friend],
+      );
+      const resetId = randomUUID();
+      await db.query(
+        "insert into public.password_reset_requests(id,group_id,member_id,target_user_id,username,note) values($1,$2,$3,$4,'august','Passwort vergessen')",
+        [resetId, gid, friendMember, friend],
+      );
+
+      const [friendDash] = await as<{
+        value: { accounts: unknown[]; reset_requests: unknown[] };
+      }>(friend, "select public.get_dashboard($1) as value", [gid]);
+      assert.equal(friendDash.value.accounts.length, 2);
+      assert.equal(friendDash.value.reset_requests.length, 0);
+
+      const [ownerDash] = await as<{
+        value: { reset_requests: { id: string; status: string }[] };
+      }>(owner, "select public.get_dashboard($1) as value", [gid]);
+      assert.equal(ownerDash.value.reset_requests.length, 1);
+      assert.equal(ownerDash.value.reset_requests[0].status, "open");
+
+      await assert.rejects(
+        () =>
+          as(friend, "select public.dismiss_password_reset($1,$2,$3)", [
+            gid,
+            randomUUID(),
+            resetId,
+          ]),
+        /Keine Berechtigung/,
+      );
+
+      await as(owner, "select public.dismiss_password_reset($1,$2,$3)", [
+        gid,
+        randomUUID(),
+        resetId,
+      ]);
+      const [afterDismiss] = await as<{
+        value: { reset_requests: { status: string }[] };
+      }>(owner, "select public.get_dashboard($1) as value", [gid]);
+      assert.equal(afterDismiss.value.reset_requests[0].status, "dismissed");
+    },
+  );
   await db.close();
 });
 

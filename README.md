@@ -6,7 +6,7 @@ Eine iPhone-taugliche Web-App für eure gemeinsamen Scooter-Minutenpakete. Jede 
 
 ## Was funktioniert?
 
-- Persönliche Anmeldung mit Supabase Auth per E-Mail-Code oder Anmeldelink.
+- **Direkte Anmeldung per Benutzername & Passwort** (ohne E-Mail-Zwang oder MFA) plus eigenes **Passwort- & Zurücksetzungs-Dashboard** für Gruppen-Admins (offene «Passwort vergessen»-Anfragen bearbeiten, Passwörter neu vergeben oder Mitglieder direkt mit Startpasswort anlegen).
 - Gruppe erstellen, Freunde mit zeitlich begrenztem Einladungscode hinzufügen.
 - Beliebig erweiterbare Mitgliederliste mit Admin- und Mitgliedsrollen. Eigene Namen lassen sich ändern; Admins können alle Mitgliedsnamen ändern.
 - Eigene Fahrten manuell erfassen oder live per **Dott entsperren** starten: **Verbrauch = Fahrzeit + Pausierzeit**.

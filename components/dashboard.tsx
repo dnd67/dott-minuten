@@ -18,6 +18,7 @@ import {
   Copy,
   CreditCard,
   History,
+  KeyRound,
   LayoutDashboard,
   LoaderCircle,
   LocateFixed,
@@ -70,6 +71,7 @@ import {
   markOnboardingDone,
   OnboardingModal,
 } from "./onboarding-modal";
+import { PasswordDashboard } from "./password-dashboard";
 import { ThemeCycleButton, ThemeSegmented } from "./theme-toggle";
 
 type Tab = "overview" | "rides" | "balance" | "stats" | "members";
@@ -93,6 +95,7 @@ type Props = {
   data: Snapshot;
   groups: Group[];
   userId: string;
+  ownUsername: string;
   demo: boolean;
   online: boolean;
   connected: boolean;
@@ -102,6 +105,17 @@ type Props = {
   autoOpenTour?: boolean;
   onTourOpened?: () => void;
   mutate: (action: Action, args: RpcArgs) => Promise<string | boolean>;
+  onSetMemberPassword: (
+    memberId: string,
+    newPassword: string,
+  ) => Promise<boolean>;
+  onCreateMemberAccount: (args: {
+    displayName: string;
+    username: string;
+    password: string;
+    role: "member" | "admin";
+  }) => Promise<string | false>;
+  onUpdateOwnPassword: (newPassword: string) => Promise<boolean>;
   onGroup: (id: string) => void;
   onLogout: () => void;
   onBeginAction: () => void;
@@ -190,6 +204,9 @@ export function Dashboard(p: Props) {
 
   const me = data.members.find((m) => m.user_id === p.userId && m.active);
   const admin = me?.role === "admin";
+  const openResetsCount = admin
+    ? (data.reset_requests ?? []).filter((r) => r.status === "open").length
+    : 0;
 
   const memberSummaries = useMemo(() => {
     const map = new Map<string, ReturnType<typeof summary>>();
@@ -532,10 +549,35 @@ export function Dashboard(p: Props) {
             >
               <t.icon size={19} />
               <span>{t.label}</span>
+              {t.id === "members" && openResetsCount > 0 && (
+                <i className="nav-badge" aria-hidden="true">
+                  {openResetsCount}
+                </i>
+              )}
             </button>
           ))}
         </nav>
         <div className="sidebar-bottom">
+          <button
+            type="button"
+            className="nav-item sidebar-util"
+            onClick={() => {
+              setTab("members");
+              setTimeout(() => {
+                document
+                  .getElementById("passwort-dashboard")
+                  ?.scrollIntoView({ behavior: "smooth" });
+              }, 40);
+            }}
+          >
+            <KeyRound size={18} />
+            <span>Passwörter</span>
+            {openResetsCount > 0 && (
+              <i className="nav-badge" aria-hidden="true">
+                {openResetsCount}
+              </i>
+            )}
+          </button>
           <button
             type="button"
             className="nav-item sidebar-util"
@@ -629,6 +671,31 @@ export function Dashboard(p: Props) {
               <h1 className="overview-heading">
                 Hoi {me?.display_name ?? "zusammen"}
               </h1>
+
+              {openResetsCount > 0 && (
+                <div className="notice reset-alert-banner" role="status">
+                  <KeyRound size={18} />
+                  <span>
+                    {openResetsCount === 1
+                      ? "1 offene Passwort-Zurücksetzung wartet auf dich."
+                      : `${openResetsCount} offene Passwort-Zurücksetzungen warten auf dich.`}
+                  </span>
+                  <button
+                    type="button"
+                    className="button secondary compact-btn"
+                    onClick={() => {
+                      setTab("members");
+                      setTimeout(() => {
+                        document
+                          .getElementById("passwort-dashboard")
+                          ?.scrollIntoView({ behavior: "smooth" });
+                      }, 40);
+                    }}
+                  >
+                    Passwort-Dashboard öffnen
+                  </button>
+                </div>
+              )}
 
               {!tourBannerHidden && (
                 <section className="onboarding-banner" aria-label="Einführung">
@@ -1199,8 +1266,9 @@ export function Dashboard(p: Props) {
                         : "Einladungscode · 7 Tage gültig"}
                     </strong>
                     <p>
-                      Teile direkt den Einladungslink – nach dem E-Mail-Login
-                      wird der Code automatisch übernommen.
+                      Teile direkt den Einladungslink – nach dem Anmelden per
+                      Benutzername &amp; Passwort wird der Code automatisch
+                      übernommen.
                     </p>
                     <div className="invite-code-row">
                       <code>{code}</code>
@@ -1358,6 +1426,27 @@ export function Dashboard(p: Props) {
                   und Fahrten stornieren. Neue Mitglieder starten mit 0 Minuten.
                 </span>
               </div>
+              <PasswordDashboard
+                me={me}
+                ownUsername={p.ownUsername}
+                admin={admin}
+                members={data.members}
+                accounts={data.accounts ?? []}
+                resetRequests={data.reset_requests ?? []}
+                busy={p.busy}
+                renderAvatar={avatar}
+                onSetMemberPassword={p.onSetMemberPassword}
+                onCreateMemberAccount={p.onCreateMemberAccount}
+                onDismissReset={async (resetId) =>
+                  Boolean(
+                    await p.mutate("dismiss_password_reset", {
+                      p_reset_id: resetId,
+                    }),
+                  )
+                }
+                onUpdateOwnPassword={p.onUpdateOwnPassword}
+              />
+
               <section className="panel">
                 <PanelHeading
                   title={`Dein Zugang · ${me?.display_name ?? "Mitglied"}`}

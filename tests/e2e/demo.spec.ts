@@ -337,5 +337,32 @@ test("Onboarding, Hell/Dunkel-Modus, Feedback-Vorschau und Dott-Entsperrung mit 
   ).toBeVisible();
   await page.getByRole("button", { name: "Fertig" }).click();
 
+  // 5. Passwort- & Zurücksetzungs-Dashboard auf iPhone-Breite prüfen
+  await page
+    .locator(".mobile-nav")
+    .getByRole("button", { name: "Mitglieder", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Passwort- & Zurücksetzungs-Dashboard",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".pw-reset-row").getByText("@max", { exact: true }),
+  ).toBeVisible();
+  await page
+    .locator(".pw-reset-row")
+    .getByRole("button", { name: "Neues Passwort setzen" })
+    .click();
+  await page
+    .getByRole("button", { name: "Passwort speichern", exact: true })
+    .click();
+  await expect(
+    page.getByText(/Neues Passwort für Max gespeichert/),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+
   await context.close();
 });

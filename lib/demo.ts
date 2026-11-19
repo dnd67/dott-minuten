@@ -254,6 +254,37 @@ export function demoSnapshot(): Snapshot {
       },
     ],
     feedback: [],
+    accounts: [
+      {
+        user_id: DEMO_USER,
+        username: "oskar",
+        password_updated_at: ago(15),
+      },
+      {
+        user_id: "user-1",
+        username: "august",
+        password_updated_at: ago(12),
+      },
+      {
+        user_id: "user-2",
+        username: "max",
+        password_updated_at: ago(14),
+      },
+    ],
+    reset_requests: [
+      {
+        id: "reset-demo-1",
+        group_id: gid,
+        member_id: "demo-2",
+        target_user_id: "user-2",
+        username: "max",
+        note: "Neues iPhone – Passwort vergessen",
+        status: "open",
+        requested_at: ago(0, 9),
+        resolved_at: null,
+        resolved_by_member_id: null,
+      },
+    ],
   };
 }
 
@@ -430,6 +461,15 @@ export function demoAction(
       page: String(args.p_page ?? ""),
       created_at: now,
     });
+  } else if (action === "dismiss_password_reset") {
+    const req = (data.reset_requests ?? []).find(
+      (r) => r.id === args.p_reset_id && r.status === "open",
+    );
+    if (req) {
+      req.status = "dismissed";
+      req.resolved_at = now;
+      req.resolved_by_member_id = "demo-0";
+    }
   }
   return data;
 }

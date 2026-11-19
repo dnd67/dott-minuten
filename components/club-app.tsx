@@ -4,12 +4,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
   ArrowRight,
-  Zap,
-  LoaderCircle,
-  Mail,
+  Check,
   ExternalLink,
+  Eye,
+  EyeOff,
+  KeyRound,
+  LoaderCircle,
+  Lock,
   Sparkles,
   Ticket,
+  User,
+  Zap,
 } from "lucide-react";
 import {
   getSupabase,
@@ -17,6 +22,16 @@ import {
   listGroups,
   loadSnapshot,
 } from "@/lib/supabase";
+import {
+  adminCreateMemberAccount,
+  adminSetMemberPassword,
+  emailToUsername,
+  normalizeUsername,
+  registerUsernameAccount,
+  requestPasswordReset,
+  updateOwnPassword,
+  usernameToAuthEmail,
+} from "@/lib/accounts";
 import { DEMO_USER, demoAction, demoSnapshot } from "@/lib/demo";
 import type { Action, Group, RpcArgs, Snapshot } from "@/lib/domain";
 import { Dashboard } from "./dashboard";
@@ -27,8 +42,13 @@ const DEMO_KEY = "minutenclub-demo-v1";
 const INVITE_KEY = "minutenclub-pending-invite-v1";
 
 function errorText(error: unknown) {
-  if (error && typeof error === "object" && "message" in error)
-    return String(error.message);
+  if (error && typeof error === "object" && "message" in error) {
+    const msg = String(error.message);
+    if (/invalid login credentials/i.test(msg)) {
+      return "Benutzername oder Passwort stimmt nicht.";
+    }
+    return msg;
+  }
   return "Das hat nicht geklappt. Bitte erneut versuchen.";
 }
 
@@ -54,6 +74,14 @@ export function ClubApp() {
   const command = useRef<{ payload: string; id: string } | null>(null);
   const busyRef = useRef(false);
   const createId = useRef<string | null>(null);
+
+  const persistDemo = useCallback((next: Snapshot) => {
+    setSnapshot(next);
+    try {
+      localStorage.setItem(DEMO_KEY, JSON.stringify(next));
+    } catch {}
+    setSyncedAt(new Date());
+  }, []);
 
   const startDemo = useCallback(() => {
     let data = demoSnapshot();
@@ -148,7 +176,7 @@ export function ClubApp() {
     return () => {
       alive = false;
     };
-  }, [client, userId, demo]); // Token-Refresh setzt die Gruppenansicht nicht zurück.
+  }, [client, userId, demo]);
 
   useEffect(() => {
     if (demo || !client || !userId || !groupId) return;
@@ -191,6 +219,7 @@ export function ClubApp() {
       "packages",
       "package_contributions",
       "feedback",
+      "password_reset_requests",
     ]) {
       channel.on(
         "postgres_changes",
@@ -203,6 +232,11 @@ export function ClubApp() {
         schedule,
       );
     }
+    channel.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "user_accounts" },
+      schedule,
+    );
     channel.subscribe((status) => {
       if (alive) {
         setConnected(status === "SUBSCRIBED");
@@ -254,12 +288,8 @@ export function ClubApp() {
         if (action === "create_invite") result = "demo-einladung";
         else if (snapshot) {
           const next = demoAction(snapshot, action, full);
-          setSnapshot(next);
-          try {
-            localStorage.setItem(DEMO_KEY, JSON.stringify(next));
-          } catch {}
+          persistDemo(next);
         }
-        setSyncedAt(new Date());
       } else {
         const response = await client!.rpc(action, full);
         if (response.error) throw response.error;
@@ -275,6 +305,97 @@ export function ClubApp() {
       busyRef.current = false;
       setBusy(false);
     }
+  }
+
+  async function handleSetMemberPassword(
+    memberId: string,
+    newPassword: string,
+  ): Promise<boolean> {
+    setError("");
+    if (demo) {
+      if (!snapshot) return false;
+      const next = structuredClone(snapshot);
+      const target = next.members.find((m) => m.id === memberId);
+      if (!target) return false;
+      const now = new Date().toISOString();
+      next.accounts ??= [];
+      const acc = next.accounts.find((a) => a.user_id === target.user_id);
+      if (acc) acc.password_updated_at = now;
+      for (const r of next.reset_requests ?? []) {
+        if (r.member_id === memberId && r.status === "open") {
+          r.status = "completed";
+          r.resolved_at = now;
+          r.resolved_by_member_id = "demo-0";
+        }
+      }
+      persistDemo(next);
+      return true;
+    }
+    if (!client) return false;
+    await adminSetMemberPassword(client, groupId, memberId, newPassword);
+    await refreshRef.current();
+    return true;
+  }
+
+  async function handleCreateMemberAccount(args: {
+    displayName: string;
+    username: string;
+    password: string;
+    role: "member" | "admin";
+  }): Promise<string | false> {
+    setError("");
+    if (demo) {
+      if (!snapshot) return false;
+      const cleanUser = normalizeUsername(args.username);
+      if ((snapshot.accounts ?? []).some((a) => a.username === cleanUser)) {
+        throw new Error("Dieser Benutzername ist bereits vergeben.");
+      }
+      const next = structuredClone(snapshot);
+      const uid = `user-${crypto.randomUUID()}`;
+      const mid = `demo-${crypto.randomUUID()}`;
+      const now = new Date().toISOString();
+      next.members.push({
+        id: mid,
+        group_id: next.group.id,
+        user_id: uid,
+        display_name: args.displayName.trim(),
+        role: args.role,
+        active: true,
+      });
+      next.accounts ??= [];
+      next.accounts.push({
+        user_id: uid,
+        username: cleanUser,
+        password_updated_at: now,
+      });
+      persistDemo(next);
+      return cleanUser;
+    }
+    if (!client) return false;
+    const created = await adminCreateMemberAccount(client, {
+      groupId,
+      ...args,
+    });
+    await refreshRef.current();
+    return created;
+  }
+
+  async function handleUpdateOwnPassword(
+    newPassword: string,
+  ): Promise<boolean> {
+    setError("");
+    if (demo) {
+      if (!snapshot) return false;
+      const next = structuredClone(snapshot);
+      const acc = (next.accounts ?? []).find((a) => a.user_id === DEMO_USER);
+      if (acc) acc.password_updated_at = new Date().toISOString();
+      persistDemo(next);
+      return true;
+    }
+    if (!client) return false;
+    await updateOwnPassword(client, newPassword);
+    await refreshRef.current();
+    return true;
   }
 
   async function setup(name: string, displayName: string, token?: string) {
@@ -336,6 +457,11 @@ export function ClubApp() {
       window.history.replaceState({}, "", window.location.pathname);
   }
 
+  const ownUsername = demo
+    ? "oskar"
+    : ((session?.user.app_metadata?.username as string | undefined) ??
+      emailToUsername(session?.user.email));
+
   if (
     (demo || session) &&
     snapshot &&
@@ -348,6 +474,7 @@ export function ClubApp() {
         data={snapshot}
         groups={demo ? [snapshot.group] : groups}
         userId={demo ? DEMO_USER : session!.user.id}
+        ownUsername={ownUsername}
         demo={demo}
         online={online}
         connected={connected}
@@ -357,6 +484,9 @@ export function ClubApp() {
         autoOpenTour={justOnboarded}
         onTourOpened={() => setJustOnboarded(false)}
         mutate={mutate}
+        onSetMemberPassword={handleSetMemberPassword}
+        onCreateMemberAccount={handleCreateMemberAccount}
+        onUpdateOwnPassword={handleUpdateOwnPassword}
         onGroup={(id) => {
           setGroupId(id);
           setConnected(false);
@@ -412,7 +542,7 @@ export function ClubApp() {
           </p>
           <div className="entry-highlights">
             <span>
-              <Ticket size={15} /> Fair nach CHF-Anteil aufgeteilt
+              <Ticket size={15} /> Anmeldung per Benutzername &amp; Passwort
             </span>
             <span>
               <Sparkles size={15} /> Standort nur aktiv beim Tippen
@@ -425,8 +555,8 @@ export function ClubApp() {
             <div className="notice invite-banner" role="status">
               <Ticket size={18} />
               <span>
-                Einladung erkannt – nach dem Anmelden wird dein Code automatisch
-                eingefügt.
+                Einladung erkannt – melde dich an oder erstelle kurz einen
+                Benutzernamen, dein Code wird danach automatisch übernommen.
               </span>
             </div>
           )}
@@ -470,6 +600,7 @@ export function ClubApp() {
             ) : groups.length === 0 || pendingInvite ? (
               <GroupSetup
                 busy={busy}
+                defaultDisplayName={ownUsername}
                 initialToken={pendingInvite}
                 onSubmit={setup}
               />
@@ -496,11 +627,7 @@ export function ClubApp() {
               </>
             )
           ) : (
-            <AuthForm
-              client={client!}
-              pendingInvite={pendingInvite}
-              startDemo={startDemo}
-            />
+            <AuthForm client={client!} startDemo={startDemo} />
           )}
           {session && (groups.length === 0 || Boolean(pendingInvite)) && (
             <button className="text-link" disabled={busy} onClick={logout}>
@@ -536,146 +663,242 @@ function Loading() {
 
 function AuthForm({
   client,
-  pendingInvite,
   startDemo,
 }: {
   client: NonNullable<ReturnType<typeof getSupabase>>;
-  pendingInvite: string;
   startDemo: () => void;
 }) {
-  const [email, setEmail] = useState(""),
-    [token, setToken] = useState(""),
-    [sent, setSent] = useState(false),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+  const [mode, setMode] = useState<"login" | "register" | "reset">("login");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [resetNote, setResetNote] = useState("");
+  const [resetSent, setResetSent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  function switchMode(next: "login" | "register" | "reset") {
+    setMode(next);
+    setError("");
+    setResetSent(false);
+  }
+
   return (
     <>
-      <h2>{sent ? "Anmeldecode eingeben" : "Anmelden"}</h2>
-      <p>
-        Melde dich mit deiner eigenen E-Mail-Adresse an. Du erhältst einen
-        einmaligen Anmeldecode per E-Mail.
-      </p>
-      <form
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setBusy(true);
-          setError("");
-          try {
-            const redirectUrl = pendingInvite
-              ? `${window.location.origin}/?invite=${encodeURIComponent(pendingInvite)}`
-              : window.location.origin;
-            const response = sent
-              ? await client.auth.verifyOtp({
-                  email: email.trim(),
-                  token: token.trim(),
-                  type: "email",
-                })
-              : await client.auth.signInWithOtp({
-                  email: email.trim(),
-                  options: { emailRedirectTo: redirectUrl },
-                });
-            if (response.error) throw response.error;
-            if (!sent) setSent(true);
-          } catch (error) {
-            setError(errorText(error));
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        <label>
-          E-Mail-Adresse
-          <div className="input-icon">
-            <Mail size={18} />
-            <input
-              type="email"
-              required
-              autoComplete="email"
-              placeholder="du@beispiel.ch"
-              value={email}
-              disabled={sent}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
-        </label>
-        {sent && (
-          <label>
-            Anmeldecode
-            <input
-              autoFocus
-              required
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              pattern="[0-9]{6,10}"
-              minLength={6}
-              maxLength={10}
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="Code aus deiner E-Mail"
-            />
-          </label>
-        )}
-        {error && (
-          <p role="alert" className="notice error">
-            {error}
-          </p>
-        )}
-        {sent && (
-          <p role="status" className="notice">
-            E-Mail verschickt. Gib den Code hier ein. Prüfe auch den
-            Spam-Ordner. Falls deine E-Mail nur einen Link enthält, kannst du
-            dich darüber anmelden.
-          </p>
-        )}
-        <button className="button primary wide" disabled={busy}>
-          {busy ? (
-            <LoaderCircle size={18} className="spin" />
-          ) : (
-            <>
-              {sent ? "Anmelden" : "Anmeldecode senden"}{" "}
-              <ArrowRight size={18} />
-            </>
-          )}
+      <div className="auth-tabs" role="tablist" aria-label="Zugangsart">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "login"}
+          className={mode === "login" ? "active" : ""}
+          onClick={() => switchMode("login")}
+        >
+          Anmelden
         </button>
-        {sent && (
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "register"}
+          className={mode === "register" ? "active" : ""}
+          onClick={() => switchMode("register")}
+        >
+          Konto erstellen
+        </button>
+      </div>
+
+      <h2>
+        {mode === "login"
+          ? "Willkommen zurück"
+          : mode === "register"
+            ? "Neues Konto erstellen"
+            : "Passwort zurücksetzen"}
+      </h2>
+      <p>
+        {mode === "login"
+          ? "Melde dich direkt mit deinem Benutzernamen und Passwort an – ganz ohne E-Mail-Code."
+          : mode === "register"
+            ? "Wähle einen Benutzernamen und ein Passwort (mind. 6 Zeichen). Danach bist du sofort eingeloggt."
+            : "Sende eine Anfrage an euren Gruppen-Admin. Er kann dir im Passwort-Dashboard sofort ein neues Passwort setzen."}
+      </p>
+
+      {mode === "reset" && resetSent ? (
+        <div className="notice" role="status">
+          <Check size={18} />
+          <span>
+            Anfrage gesendet! Sag deinem Gruppen-Admin kurz Bescheid – er sieht
+            sie direkt im Passwort-Dashboard unter «Mitglieder» und gibt dir ein
+            neues Passwort.
+          </span>
+        </div>
+      ) : (
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            setError("");
+            try {
+              const cleanUser = normalizeUsername(username);
+              if (mode === "reset") {
+                await requestPasswordReset(cleanUser, resetNote);
+                setResetSent(true);
+                return;
+              }
+              if (mode === "register") {
+                await registerUsernameAccount(cleanUser, password);
+              }
+              const { error: signInErr } = await client.auth.signInWithPassword(
+                {
+                  email: usernameToAuthEmail(cleanUser),
+                  password,
+                },
+              );
+              if (signInErr) throw signInErr;
+            } catch (err) {
+              setError(errorText(err));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <label>
+            Benutzername
+            <div className="input-icon">
+              <User size={18} />
+              <input
+                type="text"
+                required
+                minLength={2}
+                maxLength={32}
+                autoCapitalize="none"
+                autoCorrect="off"
+                autoComplete="username"
+                placeholder="z. B. oskar"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+              />
+            </div>
+          </label>
+
+          {mode !== "reset" ? (
+            <div className="field-group">
+              <label htmlFor="auth-password">Passwort</label>
+              <div className="input-icon location-input-wrap">
+                <Lock size={18} />
+                <input
+                  id="auth-password"
+                  type={showPw ? "text" : "password"}
+                  required
+                  minLength={6}
+                  maxLength={128}
+                  autoComplete={
+                    mode === "register" ? "new-password" : "current-password"
+                  }
+                  placeholder={
+                    mode === "register"
+                      ? "Mindestens 6 Zeichen"
+                      : "Dein Passwort"
+                  }
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="icon-button locate-inline-btn"
+                  aria-label={
+                    showPw ? "Passwort verbergen" : "Passwort anzeigen"
+                  }
+                  onClick={() => setShowPw((v) => !v)}
+                >
+                  {showPw ? <EyeOff size={17} /> : <Eye size={17} />}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <label>
+              <span>
+                Hinweis für den Admin <span className="optional">optional</span>
+              </span>
+              <input
+                type="text"
+                maxLength={300}
+                placeholder="z. B. Neues Handy / Passwort vergessen"
+                value={resetNote}
+                onChange={(e) => setResetNote(e.target.value)}
+              />
+            </label>
+          )}
+
+          {error && (
+            <p role="alert" className="notice error">
+              {error}
+            </p>
+          )}
+
+          <button className="button primary wide" disabled={busy}>
+            {busy ? (
+              <LoaderCircle size={18} className="spin" />
+            ) : mode === "reset" ? (
+              <>
+                <KeyRound size={18} /> Zurücksetzung anfragen
+              </>
+            ) : (
+              <>
+                {mode === "register" ? "Konto erstellen & starten" : "Anmelden"}{" "}
+                <ArrowRight size={18} />
+              </>
+            )}
+          </button>
+        </form>
+      )}
+
+      <div className="auth-footer-links">
+        {mode !== "reset" ? (
           <button
-            className="text-link"
             type="button"
-            disabled={busy}
-            onClick={() => {
-              setSent(false);
-              setToken("");
-              setError("");
-            }}
+            className="text-link"
+            onClick={() => switchMode("reset")}
           >
-            Andere Adresse / neuen Code anfordern
+            Passwort vergessen?
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="text-link"
+            onClick={() => switchMode("login")}
+          >
+            Zurück zum Login
           </button>
         )}
-      </form>
-      <button className="text-link" onClick={startDemo}>
-        Zuerst die Demo ansehen
-      </button>
+        <button type="button" className="text-link" onClick={startDemo}>
+          Demo ansehen
+        </button>
+      </div>
     </>
   );
 }
 
 function GroupSetup({
   busy,
+  defaultDisplayName,
   initialToken,
   onSubmit,
 }: {
   busy: boolean;
+  defaultDisplayName?: string;
   initialToken?: string;
   onSubmit: (name: string, displayName: string, token?: string) => void;
 }) {
   const [join, setJoin] = useState(Boolean(initialToken));
+  const prettyDefault = defaultDisplayName
+    ? defaultDisplayName.charAt(0).toUpperCase() + defaultDisplayName.slice(1)
+    : "";
   return (
     <>
       <h2>{join ? "Zu eurer Crew" : "Gründe euren Club"}</h2>
       <p>
         {join
           ? "Den Einladungscode bekommst du von eurem Admin – per Einladungslink ist er bereits ausgefüllt."
-          : "Du wirst Admin und kannst danach deine Freunde per Link einladen."}
+          : "Du wirst Admin und kannst im Passwort-Dashboard Freunde einladen oder direkt Konten für sie anlegen."}
       </p>
       <form
         onSubmit={(e) => {
@@ -689,11 +912,12 @@ function GroupSetup({
         }}
       >
         <label>
-          Dein Name
+          Dein Anzeigename
           <input
             name="name"
             required
             maxLength={60}
+            defaultValue={prettyDefault}
             placeholder="Oskar"
             autoComplete="given-name"
           />

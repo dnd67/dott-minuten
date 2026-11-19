@@ -2176,3 +2176,168 @@ tr.voided td {
     flex: 1 1 10rem;
   }
 }
+
+/* Benutzername/Passwort-Login & Passwort-Verwaltungs-Dashboard */
+.auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 0.85rem;
+  background: var(--inset);
+  border: 1px solid var(--line);
+  margin-bottom: 1.25rem;
+}
+.auth-tabs button {
+  min-height: 40px;
+  border-radius: 0.65rem;
+  font-size: 0.9rem;
+  font-weight: 620;
+  color: var(--secondary);
+}
+.auth-tabs button.active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.14);
+}
+.auth-footer-links {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+.nav-badge {
+  margin-left: auto;
+  font-style: normal;
+  font-size: 0.72rem;
+  font-weight: 700;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.38rem;
+  border-radius: 99px;
+  display: inline-grid;
+  place-items: center;
+  background: var(--danger);
+  color: var(--on-danger);
+}
+.reset-alert-banner {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  border: 1px solid var(--line);
+}
+.reset-alert-banner > span {
+  flex: 1 1 12rem;
+}
+.pw-header-badges {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.pw-dashboard-body {
+  padding: 0 var(--pad) var(--pad);
+  display: grid;
+  gap: 1.15rem;
+}
+.pw-subcard {
+  background: var(--inset);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 1rem;
+}
+.pw-subcard-header,
+.credential-box-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.credential-box {
+  margin: 0;
+}
+.credential-values {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.55rem;
+}
+.credential-values code {
+  padding: 0.45rem 0.65rem;
+  border-radius: 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+.pw-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.pw-editor-row > .location-input-wrap {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+.pw-section {
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+}
+.pw-section > h3 {
+  margin-bottom: 0.65rem;
+}
+.pw-empty-hint {
+  font-size: 0.88rem;
+  color: var(--secondary);
+}
+.pw-reset-list,
+.pw-member-list {
+  display: grid;
+  gap: 0.5rem;
+}
+.pw-reset-row,
+.pw-member-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem 1rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.85rem;
+  background: var(--inset);
+}
+.pw-reset-row .person-cell,
+.pw-member-row .person-cell {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+.pw-reset-row small,
+.pw-member-row small {
+  display: block;
+  color: var(--secondary);
+  overflow-wrap: anywhere;
+}
+.pw-reset-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+.reset-alert-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.pw-own-form {
+  max-width: 36rem;
+}
