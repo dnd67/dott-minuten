@@ -2,8 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   allocateMinutes,
+  groupSharedRides,
   moneyRappen,
   rideDraft,
+  splitRideSeconds,
   summary,
   wholeMinutes,
 } from "../lib/domain";
@@ -196,4 +198,78 @@ test("extractInviteToken akzeptiert sowohl rohe Codes als auch ganze Einladungsl
     "9f8e7d6c5b4a",
   );
   assert.equal(extractInviteToken(""), "");
+});
+
+test("Geteilte Fahrt auf dem gleichen Scooter teilt Zeit exakt auf, gruppiert Anzeige und erstattet alle bei Storno", () => {
+  // 14 Min. Fahrt + 1 Min. Pause = 900s auf 2 Personen -> exakt 420s + 30s = 450s (7,5 Min.) pro Person
+  const two = splitRideSeconds(14, 1, ["demo-0", "demo-2"]);
+  assert.deepEqual(two, [
+    {
+      member_id: "demo-0",
+      duration_seconds: 420,
+      pause_seconds: 30,
+      charged_seconds: 450,
+    },
+    {
+      member_id: "demo-2",
+      duration_seconds: 420,
+      pause_seconds: 30,
+      charged_seconds: 450,
+    },
+  ]);
+
+  // 10 Min. auf 3 Personen -> exakt 200s pro Person (600s gesamt)
+  const three = splitRideSeconds(10, 0, ["m3", "m1", "m2"]);
+  assert.equal(
+    three.reduce((n, s) => n + s.charged_seconds, 0),
+    600,
+  );
+  assert.deepEqual(
+    three.map((s) => s.charged_seconds),
+    [200, 200, 200],
+  );
+
+  // Demo-Buchung + Storno für Oskar & Max auf einem Scooter:
+  const base = demoSnapshot();
+  const oskarBefore = summary(base, "demo-0").balance;
+  const maxBefore = summary(base, "demo-2").balance;
+  const groupBefore = summary(base).inventory;
+
+  const afterShared = demoAction(base, "record_ride", {
+    p_request_id: "shared-ride-1",
+    p_occurred_at: new Date().toISOString(),
+    p_drive_minutes: 14,
+    p_pause_minutes: 1,
+    p_note: "Zu zweit zum See",
+    p_start_label: "Zürich HB",
+    p_end_label: "Bürkliplatz",
+    p_co_rider_ids: ["demo-2"],
+  });
+
+  assert.equal(summary(afterShared, "demo-0").balance, oskarBefore - 450);
+  assert.equal(summary(afterShared, "demo-2").balance, maxBefore - 450);
+  assert.equal(summary(afterShared).inventory, groupBefore - 900);
+
+  // Anzeige gruppiert beide Zeilen zu 1 Fahrt, Statistik zählt 1 Fahrt aber beide Personen:
+  const grouped = groupSharedRides(afterShared.rides);
+  const sharedGroup = grouped.find((g) => g.key === "shared-ride-1");
+  assert.ok(sharedGroup);
+  assert.equal(sharedGroup.parts.length, 2);
+  assert.equal(sharedGroup.charged_seconds, 900);
+
+  const insights = computeRideInsights(afterShared.rides, afterShared.members);
+  assert.equal(
+    insights.totalRides,
+    computeRideInsights(base.rides, base.members).totalRides + 1,
+  );
+
+  // Storno erstattet BEIDEN ihre 450s zurück:
+  const afterVoid = demoAction(afterShared, "void_ride", {
+    p_request_id: "void-shared-1",
+    p_ride_id: "shared-ride-1",
+    p_reason: "Teststorno geteilt",
+  });
+  assert.equal(summary(afterVoid, "demo-0").balance, oskarBefore);
+  assert.equal(summary(afterVoid, "demo-2").balance, maxBefore);
+  assert.equal(summary(afterVoid).inventory, groupBefore);
 });

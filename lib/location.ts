@@ -13,6 +13,7 @@ export type ActiveUnlock = {
   startLabel: string;
   startLat: number | null;
   startLng: number | null;
+  coRiderIds?: string[];
 };
 
 const UNLOCK_STORAGE_KEY = "minutenclub-active-unlock-v1";
@@ -367,15 +368,26 @@ export function computeRideInsights(rides: Ride[], members: Member[]) {
     }
   >();
 
+  const seenTrips = new Set<string>();
+  const seenLocatedTrips = new Set<string>();
+  const seenDestTrips = new Set<string>();
+
   for (const r of activeRides) {
+    const tripKey = r.shared_group_id ?? r.id;
+    const isNewTrip = !seenTrips.has(tripKey);
+    if (isNewTrip) seenTrips.add(tripKey);
+
     const h = zurichHour(r.occurred_at);
-    hourly[h].count++;
+    if (isNewTrip) hourly[h].count++;
     hourly[h].seconds += r.charged_seconds;
     const part = dayPartMap.get(dayPartForHour(h))!;
-    part.count++;
+    if (isNewTrip) part.count++;
     part.seconds += r.charged_seconds;
 
     const endLabel = r.end_label?.trim() ?? "";
+    const startLabel = r.start_label?.trim() ?? "";
+    if (endLabel || startLabel) seenLocatedTrips.add(tripKey);
+
     if (endLabel) {
       const key = endLabel.toLocaleLowerCase("de-CH");
       let entry = destMap.get(key);
@@ -390,17 +402,21 @@ export function computeRideInsights(rides: Ride[], members: Member[]) {
         };
         destMap.set(key, entry);
       }
-      entry.count++;
-      entry.totalSeconds += r.charged_seconds;
-      entry.hours[h]++;
-      entry.riders.set(r.member_id, (entry.riders.get(r.member_id) ?? 0) + 1);
-      const startLabel = r.start_label?.trim() ?? "";
-      if (startLabel) {
-        const oKey = startLabel.toLocaleLowerCase("de-CH");
-        const prev = entry.origins.get(oKey);
-        if (prev) prev.count++;
-        else entry.origins.set(oKey, { label: startLabel, count: 1 });
+      const destTripKey = `${key}::${tripKey}`;
+      const isNewDestTrip = !seenDestTrips.has(destTripKey);
+      if (isNewDestTrip) {
+        seenDestTrips.add(destTripKey);
+        entry.count++;
+        entry.hours[h]++;
+        if (startLabel) {
+          const oKey = startLabel.toLocaleLowerCase("de-CH");
+          const prev = entry.origins.get(oKey);
+          if (prev) prev.count++;
+          else entry.origins.set(oKey, { label: startLabel, count: 1 });
+        }
       }
+      entry.totalSeconds += r.charged_seconds;
+      entry.riders.set(r.member_id, (entry.riders.get(r.member_id) ?? 0) + 1);
     }
   }
 
@@ -496,13 +512,9 @@ export function computeRideInsights(rides: Ride[], members: Member[]) {
     };
   });
 
-  const locatedRideCount = activeRides.filter((r) =>
-    Boolean(r.end_label?.trim() || r.start_label?.trim()),
-  ).length;
-
   return {
-    totalRides: activeRides.length,
-    locatedRideCount,
+    totalRides: seenTrips.size,
+    locatedRideCount: seenLocatedTrips.size,
     hourly,
     dayParts,
     peakDayPart,

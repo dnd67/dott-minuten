@@ -878,6 +878,91 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
       );
     },
   );
+  await t.test(
+    "Geteilte Fahrt auf dem gleichen Scooter bucht beide Anteile atomar und erstattet beide bei Storno",
+    async () => {
+      const balBefore = async (memberId: string) => {
+        const [{ sum }] = await as<{ sum: string }>(
+          owner,
+          "select coalesce(sum(seconds), 0)::text as sum from public.minute_entries where group_id=$1 and member_id=$2",
+          [gid, memberId],
+        );
+        return Number(sum);
+      };
+      const ownerBefore = await balBefore(ownerMember);
+      const friendBefore = await balBefore(friendMember);
+
+      const sharedId = randomUUID();
+      const args = [
+        gid,
+        sharedId,
+        "2026-01-04T18:00:00Z",
+        14,
+        1,
+        "Zu zweit nach Hause",
+        "Bellevue",
+        47.367,
+        8.5451,
+        "Seefeld",
+        47.3578,
+        8.5542,
+        [friendMember],
+      ];
+      // Ungültiges Mitfahrenden-Mitglied wird abgewiesen ohne Teilbuchung:
+      await assert.rejects(
+        () =>
+          as(
+            owner,
+            "select public.record_ride($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::uuid[])",
+            [...args.slice(0, 12), [randomUUID()]],
+          ),
+        /Aktives Mitglied nicht gefunden/,
+      );
+
+      // Buchung + idempotente Wiederholung:
+      await as(
+        owner,
+        "select public.record_ride($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::uuid[])",
+        args,
+      );
+      await as(
+        owner,
+        "select public.record_ride($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::uuid[])",
+        args,
+      );
+
+      const rows = await as<{
+        member_id: string;
+        duration_seconds: string;
+        pause_seconds: string;
+        charged_seconds: string;
+        shared_rider_count: number;
+      }>(
+        owner,
+        "select member_id, duration_seconds, pause_seconds, charged_seconds, shared_rider_count from public.rides where shared_group_id=$1 order by member_id",
+        [sharedId],
+      );
+      assert.equal(rows.length, 2);
+      for (const r of rows) {
+        assert.equal(Number(r.duration_seconds), 420);
+        assert.equal(Number(r.pause_seconds), 30);
+        assert.equal(Number(r.charged_seconds), 450);
+        assert.equal(r.shared_rider_count, 2);
+      }
+      assert.equal(await balBefore(ownerMember), ownerBefore - 450);
+      assert.equal(await balBefore(friendMember), friendBefore - 450);
+
+      // Storno erstattet beide Mitfahrenden atomar in einer Transaktion:
+      await as(owner, "select public.void_ride($1,$2,$3,$4)", [
+        gid,
+        randomUUID(),
+        sharedId,
+        "Falsch geteilt",
+      ]);
+      assert.equal(await balBefore(ownerMember), ownerBefore);
+      assert.equal(await balBefore(friendMember), friendBefore);
+    },
+  );
   await db.close();
 });
 

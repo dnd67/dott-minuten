@@ -27,6 +27,8 @@ export type Ride = {
   end_label?: string;
   end_lat?: number | null;
   end_lng?: number | null;
+  shared_group_id?: string | null;
+  shared_rider_count?: number;
 };
 export type Entry = {
   id: string;
@@ -108,7 +110,7 @@ export type Action =
   | "dismiss_password_reset";
 export type RpcArgs = Record<
   string,
-  string | number | boolean | null | TopupPlan
+  string | number | boolean | null | string[] | TopupPlan
 >;
 export const minutes = (seconds: number) =>
   new Intl.NumberFormat("de-CH", { maximumFractionDigits: 1 }).format(
@@ -194,6 +196,102 @@ export function rideDraft(drive: string, pause: string) {
     charged_seconds: duration_seconds + pause_seconds,
     source: "manual" as const,
   };
+}
+
+export type RideShare = {
+  member_id: string;
+  duration_seconds: number;
+  pause_seconds: number;
+  charged_seconds: number;
+};
+
+/**
+ * Teilt Fahr- und Pausenzeit sekundengenau auf alle Mitfahrenden auf demselben Scooter auf.
+ * Identische deterministische Verteilung wie in SQL (`202611190007_shared_rides.sql`).
+ */
+export function splitRideSeconds(
+  driveMinutes: number,
+  pauseMinutes: number,
+  riderMemberIds: string[],
+): RideShare[] {
+  const totalDrive = Math.trunc(driveMinutes) * 60;
+  const totalPause = Math.trunc(pauseMinutes) * 60;
+  if (totalDrive < 0 || totalPause < 0 || totalDrive + totalPause <= 0) {
+    throw new Error("Die Gesamtzeit muss grösser als null sein.");
+  }
+  const riders = [...new Set(riderMemberIds.filter(Boolean))].sort((a, b) =>
+    a < b ? -1 : a > b ? 1 : 0,
+  );
+  if (riders.length < 1 || riders.length > 10) {
+    throw new Error(
+      "Es können maximal 10 Personen gemeinsam auf einer Fahrt aufgeteilt werden.",
+    );
+  }
+  const n = riders.length;
+  const baseDrive = Math.floor(totalDrive / n);
+  const remDrive = totalDrive % n;
+  const basePause = Math.floor(totalPause / n);
+  const remPause = totalPause % n;
+  return riders.map((member_id, index) => {
+    const duration_seconds = baseDrive + (index < remDrive ? 1 : 0);
+    const pause_seconds = basePause + (n - index <= remPause ? 1 : 0);
+    return {
+      member_id,
+      duration_seconds,
+      pause_seconds,
+      charged_seconds: duration_seconds + pause_seconds,
+    };
+  });
+}
+
+export type GroupedRide = {
+  key: string;
+  ride: Ride;
+  parts: Ride[];
+  duration_seconds: number;
+  pause_seconds: number;
+  charged_seconds: number;
+  estimated_cost_rappen: number | null;
+};
+
+/** Fasst verknüpfte Zeilen einer geteilten Fahrt (`shared_group_id`) für Gesamtansichten zusammen. */
+export function groupSharedRides(rides: Ride[]): GroupedRide[] {
+  const byGroup = new Map<string, GroupedRide>();
+  const result: GroupedRide[] = [];
+  for (const r of rides) {
+    const key = r.shared_group_id ?? r.id;
+    const existing = byGroup.get(key);
+    if (existing) {
+      existing.parts.push(r);
+      existing.duration_seconds += r.duration_seconds;
+      existing.pause_seconds += r.pause_seconds;
+      existing.charged_seconds += r.charged_seconds;
+      if (
+        existing.estimated_cost_rappen !== null &&
+        r.estimated_cost_rappen !== null
+      ) {
+        existing.estimated_cost_rappen += Number(r.estimated_cost_rappen);
+      } else {
+        existing.estimated_cost_rappen = null;
+      }
+    } else {
+      const grouped: GroupedRide = {
+        key,
+        ride: r,
+        parts: [r],
+        duration_seconds: r.duration_seconds,
+        pause_seconds: r.pause_seconds,
+        charged_seconds: r.charged_seconds,
+        estimated_cost_rappen:
+          r.estimated_cost_rappen === null
+            ? null
+            : Number(r.estimated_cost_rappen),
+      };
+      byGroup.set(key, grouped);
+      result.push(grouped);
+    }
+  }
+  return result;
 }
 
 export type ContributionInput = { member_id: string; amount_rappen: number };

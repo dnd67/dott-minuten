@@ -457,3 +457,53 @@ test("Paket nach Teilnehmenden und Minutenbedarf aufteilen", async ({
     page.locator(".account-item").filter({ hasText: "August" }),
   ).toContainText("177");
 });
+
+test("Gemeinsame Fahrt auf dem gleichen Scooter während aktiver Fahrt auswählen und Zeit aufteilen", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/?demo=1");
+
+  // 1. Scooter entsperren und Fahrt starten
+  await page.getByRole("button", { name: "Dott entsperren" }).click();
+  await page.getByRole("button", { name: "Fahrt starten" }).click();
+  await expect(page.getByText(/Scooter entsperrt/)).toBeVisible();
+
+  // 2. Während der laufenden Fahrt Max als Mitfahrenden im Live-Banner auswählen
+  await page
+    .locator(".unlock-live-card")
+    .getByRole("button", { name: /\+ Max/ })
+    .click();
+  await expect(
+    page.getByText(/Gemeinsam auf dem Scooter: Oskar & Max/),
+  ).toBeVisible();
+
+  // 3. Fahrt abschliessen -> Max ist bereits vorausgewählt, 14 + 1 = 15 Min. -> je 7,5 Min.
+  await page.getByRole("button", { name: "Fahrt abschliessen" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Oskar & Max")).toBeVisible();
+  await dialog.getByLabel("Fahrzeit (Minuten)").fill("14");
+  await dialog.getByLabel("Pause (Minuten)").fill("1");
+  await expect(dialog.locator(".sum-line")).toContainText(/je 7[.,]5 Min\./);
+  await expect(dialog.locator(".shared-split-preview")).toContainText(
+    /Max: −7[.,]5 Min\./,
+  );
+  await dialog.getByLabel("Notiz optional").fill("Zu zweit am See");
+  await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+
+  // 4. In Letzte Fahrten erscheint die geteilte Fahrt sauber gruppiert & beide Salden sind reduziert
+  await expect(
+    page.getByRole("row").filter({ hasText: "Zu zweit am See" }),
+  ).toContainText(/Oskar & Max/);
+  await expect(
+    page.getByRole("row").filter({ hasText: "Zu zweit am See" }),
+  ).toContainText(/je 7[.,]5 Min\./);
+  await expect(page.locator(".balance-number")).toContainText(/141[.,]5/);
+  await expect(
+    page.locator(".crew-row").filter({ hasText: "Max" }),
+  ).toContainText(/139[.,]5/);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+});

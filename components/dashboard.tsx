@@ -40,7 +40,9 @@ import {
 } from "lucide-react";
 import {
   chf,
+  groupSharedRides,
   splitPackage,
+  splitRideSeconds,
   type SplitMode,
   type TopupPlan,
   dateLabel,
@@ -90,6 +92,7 @@ type RideSeed = {
   drive?: string;
   when?: string;
   startSpot?: Spot;
+  coRiderIds?: string[];
   fromUnlock?: boolean;
 };
 
@@ -298,8 +301,24 @@ export function Dashboard(p: Props) {
         lat: activeUnlock.startLat,
         lng: activeUnlock.startLng,
       },
+      coRiderIds: activeUnlock.coRiderIds ?? [],
       fromUnlock: true,
     });
+  }
+
+  const otherActiveMembers = data.members.filter(
+    (m) => m.active && m.id !== me?.id,
+  );
+
+  function toggleUnlockCoRider(memberId: string) {
+    if (!activeUnlock) return;
+    const current = activeUnlock.coRiderIds ?? [];
+    const nextIds = current.includes(memberId)
+      ? current.filter((id) => id !== memberId)
+      : [...current, memberId];
+    const next: ActiveUnlock = { ...activeUnlock, coRiderIds: nextIds };
+    saveActiveUnlock(next);
+    setActiveUnlock(next);
   }
 
   const currentTabLabel = tabs.find((t) => t.id === tab)?.label ?? "Übersicht";
@@ -353,125 +372,198 @@ export function Dashboard(p: Props) {
     </div>
   );
 
-  const table = (rides: Ride[], compact = false) => (
-    <div className="table-scroll">
-      <table>
-        <thead>
-          <tr>
-            <th>Mitglied</th>
-            <th>Fahrt</th>
-            <th>Fahrzeit</th>
-            <th className="optional-column">Pause</th>
-            <th>Verbrauch</th>
-            {!compact && (
-              <>
-                <th>Kosten¹</th>
-                {admin && (
-                  <th>
-                    <span className="sr-only">Aktion</span>
-                  </th>
-                )}
-              </>
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {rides.map((r) => {
-            const route = routeText(r);
-            return (
-              <tr key={r.id} className={r.voided_at ? "voided" : ""}>
-                <td>
-                  <span className="person-cell">
-                    {avatar(member(r.member_id), "small")}
-                    <span>
-                      {member(r.member_id)?.display_name ?? "Mitglied"}
+  const table = (
+    rides: Ride[],
+    compact = false,
+    collapseShared = true,
+    limit?: number,
+  ) => {
+    const allRows = collapseShared
+      ? groupSharedRides(rides)
+      : rides.map((r) => ({
+          key: r.id,
+          ride: r,
+          parts: [r],
+          duration_seconds: r.duration_seconds,
+          pause_seconds: r.pause_seconds,
+          charged_seconds: r.charged_seconds,
+          estimated_cost_rappen:
+            r.estimated_cost_rappen === null
+              ? null
+              : Number(r.estimated_cost_rappen),
+        }));
+    const rows = limit ? allRows.slice(0, limit) : allRows;
+
+    return (
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Mitglied</th>
+              <th>Fahrt</th>
+              <th>Fahrzeit</th>
+              <th className="optional-column">Pause</th>
+              <th>Verbrauch</th>
+              {!compact && (
+                <>
+                  <th>Kosten¹</th>
+                  {admin && (
+                    <th>
+                      <span className="sr-only">Aktion</span>
+                    </th>
+                  )}
+                </>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((item) => {
+              const r = item.ride;
+              const route = routeText(r);
+              const isGroupedShared = item.parts.length > 1;
+              const peerNames =
+                !isGroupedShared && r.shared_group_id
+                  ? data.rides
+                      .filter(
+                        (other) =>
+                          other.shared_group_id === r.shared_group_id &&
+                          other.id !== r.id,
+                      )
+                      .map(
+                        (other) =>
+                          member(other.member_id)?.display_name ?? "Mitglied",
+                      )
+                  : [];
+              const participantMembers = item.parts.map((part) =>
+                member(part.member_id),
+              );
+              return (
+                <tr key={item.key} className={r.voided_at ? "voided" : ""}>
+                  <td>
+                    <span className="person-cell">
+                      <span className="avatar-stack">
+                        {participantMembers.slice(0, 3).map((pm, idx) => (
+                          <span key={item.parts[idx].id}>
+                            {avatar(pm, "small")}
+                          </span>
+                        ))}
+                      </span>
+                      <span className="person-names">
+                        <span>
+                          {participantMembers
+                            .map((pm) => pm?.display_name ?? "Mitglied")
+                            .join(" & ")}
+                        </span>
+                        {isGroupedShared && (
+                          <small className="shared-badge">
+                            Geteilt ({item.parts.length})
+                          </small>
+                        )}
+                      </span>
                     </span>
-                  </span>
-                </td>
-                <td>
-                  <div>{dateLabel(r.occurred_at, true)}</div>
-                  {route && (
-                    <small className="ride-route">
-                      <MapPin size={12} /> {route}
-                    </small>
-                  )}
-                  {r.voided_at ? (
-                    <>
-                      <small className="cancellation-reason">
-                        Storniert · {r.void_reason}
+                  </td>
+                  <td>
+                    <div>{dateLabel(r.occurred_at, true)}</div>
+                    {route && (
+                      <small className="ride-route">
+                        <MapPin size={12} /> {route}
                       </small>
-                      {r.note && (
+                    )}
+                    {peerNames.length > 0 && (
+                      <small className="ride-shared-peer">
+                        <Users size={12} /> Geteilt mit {peerNames.join(" & ")}
+                      </small>
+                    )}
+                    {r.voided_at ? (
+                      <>
                         <small className="cancellation-reason">
-                          Notiz: {r.note}
+                          Storniert · {r.void_reason}
                         </small>
-                      )}
-                      {!compact && (
-                        <small className="cancellation-details">
-                          Storniert am {dateLabel(r.voided_at, true)} von{" "}
-                          {member(r.voided_by_member_id ?? "")?.display_name ??
-                            "Person nicht hinterlegt"}
-                          <br />+{minutes(r.charged_seconds)} Min. zurückgebucht
-                        </small>
-                      )}
-                    </>
-                  ) : (
-                    r.note && <small>{r.note}</small>
-                  )}
-                </td>
-                <td>
-                  {minutes(r.duration_seconds)}{" "}
-                  <span className="unit">Min.</span>
-                </td>
-                <td className="optional-column">
-                  {minutes(r.pause_seconds)} <span className="unit">Min.</span>
-                </td>
-                <td>
-                  <span className={`pill ${r.voided_at ? "muted" : "active"}`}>
-                    {minutes(r.charged_seconds)} Min.
-                    {r.voided_at ? " · storniert" : ""}
-                  </span>
-                </td>
-                {!compact && (
-                  <>
-                    <td>
-                      {r.voided_at ? (
-                        <span className="unit">Entfällt</span>
-                      ) : r.estimated_cost_rappen === null ? (
-                        <span className="unit">Offen</span>
-                      ) : (
-                        <span>≈ {chf(r.estimated_cost_rappen)}</span>
-                      )}
-                    </td>
-                    {admin && (
+                        {r.note && (
+                          <small className="cancellation-reason">
+                            Notiz: {r.note}
+                          </small>
+                        )}
+                        {!compact && (
+                          <small className="cancellation-details">
+                            Storniert am {dateLabel(r.voided_at, true)} von{" "}
+                            {member(r.voided_by_member_id ?? "")
+                              ?.display_name ?? "Person nicht hinterlegt"}
+                            <br />+{minutes(item.charged_seconds)} Min.
+                            zurückgebucht
+                            {isGroupedShared
+                              ? ` (${item.parts.length} Personen)`
+                              : ""}
+                          </small>
+                        )}
+                      </>
+                    ) : (
+                      r.note && <small>{r.note}</small>
+                    )}
+                  </td>
+                  <td>
+                    {minutes(item.duration_seconds)}{" "}
+                    <span className="unit">Min.</span>
+                  </td>
+                  <td className="optional-column">
+                    {minutes(item.pause_seconds)}{" "}
+                    <span className="unit">Min.</span>
+                  </td>
+                  <td>
+                    <span
+                      className={`pill ${r.voided_at ? "muted" : "active"}`}
+                    >
+                      {minutes(item.charged_seconds)} Min.
+                      {r.voided_at ? " · storniert" : ""}
+                    </span>
+                    {isGroupedShared && !r.voided_at && (
+                      <small className="shared-split-sub">
+                        je {minutes(item.parts[0].charged_seconds)} Min.
+                      </small>
+                    )}
+                  </td>
+                  {!compact && (
+                    <>
                       <td>
-                        {!r.voided_at && (
-                          <button
-                            className="text-link danger"
-                            onClick={(e) => {
-                              setVoidRide(r);
-                              open("void", e.detail);
-                            }}
-                          >
-                            Stornieren
-                          </button>
+                        {r.voided_at ? (
+                          <span className="unit">Entfällt</span>
+                        ) : item.estimated_cost_rappen === null ? (
+                          <span className="unit">Offen</span>
+                        ) : (
+                          <span>≈ {chf(item.estimated_cost_rappen)}</span>
                         )}
                       </td>
-                    )}
-                  </>
-                )}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      {rides.length === 0 && (
-        <Empty
-          title="Noch keine Fahrten"
-          text="Sobald ihr eine Fahrt eintragt, erscheint sie hier."
-        />
-      )}
-    </div>
-  );
+                      {admin && (
+                        <td>
+                          {!r.voided_at && (
+                            <button
+                              className="text-link danger"
+                              onClick={(e) => {
+                                setVoidRide(r);
+                                open("void", e.detail);
+                              }}
+                            >
+                              Stornieren
+                            </button>
+                          )}
+                        </td>
+                      )}
+                    </>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {rows.length === 0 && (
+          <Empty
+            title="Noch keine Fahrten"
+            text="Sobald ihr eine Fahrt eintragt, erscheint sie hier."
+          />
+        )}
+      </div>
+    );
+  };
 
   const rideButton = (
     <button
@@ -761,6 +853,42 @@ export function Dashboard(p: Props) {
                           : " · Ohne Startort"}
                         {" · Kein Hintergrund-GPS aktiv"}
                       </small>
+                      {(activeUnlock.coRiderIds?.length ?? 0) > 0 && (
+                        <small className="unlock-shared-summary">
+                          <Users size={13} /> Gemeinsam auf dem Scooter:{" "}
+                          {[
+                            me?.display_name ?? "Du",
+                            ...(activeUnlock.coRiderIds ?? []).map(
+                              (id) => member(id)?.display_name ?? "Mitglied",
+                            ),
+                          ].join(" & ")}{" "}
+                          (Zeit wird geteilt)
+                        </small>
+                      )}
+                      {otherActiveMembers.length > 0 && (
+                        <div className="unlock-coriders">
+                          <span>Mit auf dem Scooter:</span>
+                          <div className="chip-row">
+                            {otherActiveMembers.map((m) => {
+                              const active = (
+                                activeUnlock.coRiderIds ?? []
+                              ).includes(m.id);
+                              return (
+                                <button
+                                  key={m.id}
+                                  type="button"
+                                  className={`chip ${active ? "active" : ""}`}
+                                  aria-pressed={active}
+                                  onClick={() => toggleUnlockCoRider(m.id)}
+                                >
+                                  {active ? "✓ " : "+ "}
+                                  {m.display_name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="unlock-live-actions">
@@ -914,18 +1042,22 @@ export function Dashboard(p: Props) {
                     </button>
                   }
                 />
-                {table(sorted.slice(0, 5), true)}
+                {table(sorted, true, true, 5)}
               </section>
             </>
           )}
           {tab === "rides" && (
             <section className="panel">
               <PanelHeading
-                title={
-                  rideStatus === "voided"
-                    ? `${shownRides.length} stornierte Fahrten`
-                    : `${shownRides.length} Fahrten`
-                }
+                title={(() => {
+                  const shownCount =
+                    person === "all"
+                      ? groupSharedRides(shownRides).length
+                      : shownRides.length;
+                  return rideStatus === "voided"
+                    ? `${shownCount} stornierte Fahrten`
+                    : `${shownCount} Fahrten`;
+                })()}
                 description={
                   rideStatus === "voided"
                     ? "Nach Stornozeitpunkt sortiert und gefiltert. Jede Fahrt bleibt mit Grund und Gegenbuchung erhalten."
@@ -933,7 +1065,7 @@ export function Dashboard(p: Props) {
                 }
                 aside={filters}
               />
-              {table(shownRides)}
+              {table(shownRides, false, person === "all")}
               <p className="panel-footnote">
                 ¹ Schätzung zum Erfassungszeitpunkt aus dem gewichteten
                 Paketpreis. Freischaltung und Screenshot-Preise werden
@@ -1136,33 +1268,39 @@ export function Dashboard(p: Props) {
             <>
               <div className="section-filter">{filters}</div>
               <section className="metric-grid">
-                <Metric
-                  icon={<History size={20} />}
-                  label="Fahrten"
-                  value={String(filtered.length)}
-                  note="Im ausgewählten Zeitraum"
-                />
-                <Metric
-                  icon={<Clock3 size={20} />}
-                  label="Verbrauch"
-                  value={minutes(
-                    filtered.reduce((n, r) => n + r.charged_seconds, 0),
-                  )}
-                  unit="Minuten"
-                  note="Fahrzeit + Pausierzeit"
-                />
-                <Metric
-                  icon={<TrendingUp size={20} />}
-                  label="Ø pro Fahrt"
-                  value={minutes(
-                    filtered.length
-                      ? filtered.reduce((n, r) => n + r.charged_seconds, 0) /
-                          filtered.length
-                      : 0,
-                  )}
-                  unit="Minuten"
-                  note="Inklusive Pausen"
-                />
+                {(() => {
+                  const tripCount = new Set(
+                    filtered.map((r) => r.shared_group_id ?? r.id),
+                  ).size;
+                  const totalSec = filtered.reduce(
+                    (n, r) => n + r.charged_seconds,
+                    0,
+                  );
+                  return (
+                    <>
+                      <Metric
+                        icon={<History size={20} />}
+                        label="Fahrten"
+                        value={String(tripCount)}
+                        note="Im ausgewählten Zeitraum"
+                      />
+                      <Metric
+                        icon={<Clock3 size={20} />}
+                        label="Verbrauch"
+                        value={minutes(totalSec)}
+                        unit="Minuten"
+                        note="Fahrzeit + Pausierzeit"
+                      />
+                      <Metric
+                        icon={<TrendingUp size={20} />}
+                        label="Ø pro Fahrt"
+                        value={minutes(tripCount ? totalSec / tripCount : 0)}
+                        unit="Minuten"
+                        note="Inklusive Pausen"
+                      />
+                    </>
+                  );
+                })()}
               </section>
 
               <LocationStats
@@ -1626,7 +1764,7 @@ export function Dashboard(p: Props) {
             setModal(null);
             setRideSeed(null);
           }}
-          onStartUnlock={(spot) => {
+          onStartUnlock={(spot, coRiderIds) => {
             const next: ActiveUnlock = {
               groupId: data.group.id,
               userId: p.userId,
@@ -1634,6 +1772,7 @@ export function Dashboard(p: Props) {
               startLabel: spot.label.trim(),
               startLat: spot.lat,
               startLng: spot.lng,
+              coRiderIds,
             };
             saveActiveUnlock(next);
             setActiveUnlock(next);
@@ -1823,7 +1962,7 @@ function EntryDialog({
   busy: boolean;
   remoteError: string;
   close: () => void;
-  onStartUnlock: (spot: Spot) => void;
+  onStartUnlock: (spot: Spot, coRiderIds: string[]) => void;
   onFinishUnlock: () => void;
   onSave: Props["mutate"];
 }) {
@@ -1849,6 +1988,16 @@ function EntryDialog({
     {},
   );
   const [activeMembers] = useState(() => data.members.filter((m) => m.active));
+  const otherActiveMembers = activeMembers.filter((m) => m.id !== me?.id);
+  const [coRiderIds, setCoRiderIds] = useState<string[]>(() =>
+    (seed?.coRiderIds ?? []).filter(
+      (id) => id !== me?.id && activeMembers.some((m) => m.id === id),
+    ),
+  );
+  const toggleCoRider = (id: string) =>
+    setCoRiderIds((old) =>
+      old.includes(id) ? old.filter((x) => x !== id) : [...old, id],
+    );
   const placeSuggestions = useMemo(
     () => knownPlaceSuggestions(data.rides, 5),
     [data.rides],
@@ -1964,7 +2113,9 @@ function EntryDialog({
             ? "Trage Paketminuten und Preis ein. Wähle anschliessend, wie ihr beides aufteilt."
             : kind === "rename"
               ? "Der neue Name gilt in der ganzen Gruppe. Fahrten und Guthaben bleiben derselben Person zugeordnet."
-              : "Die Minuten werden mit einer Gegenbuchung zurückgegeben. Die ursprüngliche Fahrt bleibt sichtbar.";
+              : voidRide?.shared_group_id
+                ? "Geteilte Fahrt: Die Minuten werden allen Mitfahrenden mit je einer Gegenbuchung zurückgegeben. Die ursprüngliche Fahrt bleibt sichtbar."
+                : "Die Minuten werden mit einer Gegenbuchung zurückgegeben. Die ursprüngliche Fahrt bleibt sichtbar.";
 
   async function dismiss(animate: boolean) {
     const node = dialog.current;
@@ -1990,11 +2141,14 @@ function EntryDialog({
         const cleanLabel = startSpot.label.trim();
         if (cleanLabel.length > 120)
           throw new Error("Ortsname darf höchstens 120 Zeichen lang sein.");
-        onStartUnlock({
-          label: cleanLabel,
-          lat: cleanLabel ? startSpot.lat : null,
-          lng: cleanLabel ? startSpot.lng : null,
-        });
+        onStartUnlock(
+          {
+            label: cleanLabel,
+            lat: cleanLabel ? startSpot.lat : null,
+            lng: cleanLabel ? startSpot.lng : null,
+          },
+          coRiderIds,
+        );
         await dismiss(animate);
         return;
       }
@@ -2018,6 +2172,7 @@ function EntryDialog({
           p_end_label: eLabel,
           p_end_lat: eLabel ? endSpot.lat : null,
           p_end_lng: eLabel ? endSpot.lng : null,
+          p_co_rider_ids: coRiderIds,
         });
         if (saved && seed?.fromUnlock) onFinishUnlock();
       } else if (kind === "credit")
@@ -2156,6 +2311,39 @@ function EntryDialog({
                   ))}
                 </div>
               </div>
+
+              {otherActiveMembers.length > 0 && (
+                <div className="corider-picker">
+                  <small>
+                    Auf dem gleichen Scooter mitfahren?{" "}
+                    <span className="optional">optional</span>
+                  </small>
+                  <div className="chip-row">
+                    {otherActiveMembers.map((m) => {
+                      const selected = coRiderIds.includes(m.id);
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          className={`chip ${selected ? "active" : ""}`}
+                          aria-pressed={selected}
+                          onClick={() => toggleCoRider(m.id)}
+                        >
+                          {selected ? "✓ " : "+ "}
+                          {m.display_name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {coRiderIds.length > 0 && (
+                    <small className="corider-hint">
+                      Zeit wird beim Abschliessen fair auf{" "}
+                      {1 + coRiderIds.length} Personen aufgeteilt (du kannst das
+                      auch während der Fahrt noch ändern).
+                    </small>
+                  )}
+                </div>
+              )}
             </>
           )}
 
@@ -2180,11 +2368,53 @@ function EntryDialog({
                   {initials(me?.display_name ?? "?")}
                 </span>
                 <div>
-                  <small>FAHRENDE PERSON</small>
-                  <strong>{me?.display_name}</strong>
+                  <small>
+                    {coRiderIds.length > 0
+                      ? `GEMEINSAM UNTERWEGS (${1 + coRiderIds.length} PERSONEN)`
+                      : "FAHRENDE PERSON"}
+                  </small>
+                  <strong>
+                    {[
+                      me?.display_name ?? "Mitglied",
+                      ...coRiderIds.map(
+                        (id) =>
+                          activeMembers.find((m) => m.id === id)
+                            ?.display_name ?? "Mitglied",
+                      ),
+                    ].join(" & ")}
+                  </strong>
                 </div>
-                <ShieldCheck size={19} />
+                {coRiderIds.length > 0 ? (
+                  <Users size={19} />
+                ) : (
+                  <ShieldCheck size={19} />
+                )}
               </div>
+              {otherActiveMembers.length > 0 && (
+                <div className="corider-picker">
+                  <small>
+                    Mit auf dem gleichen Scooter{" "}
+                    <span className="optional">optional · Zeit teilen</span>
+                  </small>
+                  <div className="chip-row">
+                    {otherActiveMembers.map((m) => {
+                      const selected = coRiderIds.includes(m.id);
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          className={`chip ${selected ? "active" : ""}`}
+                          aria-pressed={selected}
+                          onClick={() => toggleCoRider(m.id)}
+                        >
+                          {selected ? "✓ " : "+ "}
+                          {m.display_name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div className="form-row">
                 <label>
                   Fahrzeit (Minuten)
@@ -2217,14 +2447,48 @@ function EntryDialog({
                   />
                 </label>
               </div>
-              <div className="sum-line">
-                <span>Wird vom Guthaben abgezogen</span>
-                <strong>
-                  {Math.max(0, Math.trunc(Number(drive || 0))) +
-                    Math.max(0, Math.trunc(Number(pause || 0)))}{" "}
-                  Min.
-                </strong>
-              </div>
+              {(() => {
+                const driveMin = Math.max(0, Math.trunc(Number(drive || 0)));
+                const pauseMin = Math.max(0, Math.trunc(Number(pause || 0)));
+                const totalMin = driveMin + pauseMin;
+                const totalRiders = 1 + coRiderIds.length;
+                const previewShares =
+                  coRiderIds.length > 0 && totalMin > 0 && me
+                    ? splitRideSeconds(driveMin, pauseMin, [
+                        me.id,
+                        ...coRiderIds,
+                      ])
+                    : [];
+                return (
+                  <>
+                    <div className="sum-line">
+                      <span>
+                        {coRiderIds.length > 0
+                          ? `Wird auf ${totalRiders} Personen aufgeteilt (${totalMin} Min. gesamt)`
+                          : "Wird vom Guthaben abgezogen"}
+                      </span>
+                      <strong>
+                        {coRiderIds.length > 0
+                          ? previewShares.length
+                            ? `je ${minutes(previewShares[0].charged_seconds)} Min.`
+                            : "0 Min."
+                          : `${totalMin} Min.`}
+                      </strong>
+                    </div>
+                    {previewShares.length > 1 && (
+                      <div className="shared-split-preview" role="status">
+                        {previewShares.map((s) => (
+                          <span key={s.member_id} className="subtle-pill">
+                            {activeMembers.find((m) => m.id === s.member_id)
+                              ?.display_name ?? "Mitglied"}
+                            : −{minutes(s.charged_seconds)} Min.
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
 
               <fieldset className="location-fieldset">
                 <legend>Strecke &amp; Standort (optional)</legend>

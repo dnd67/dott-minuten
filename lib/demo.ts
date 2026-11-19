@@ -1,9 +1,11 @@
 import {
   splitPackage,
+  splitRideSeconds,
   type Snapshot,
   type RpcArgs,
   type Action,
   type FeedbackCategory,
+  type TopupPlan,
 } from "./domain";
 import { roundCoord, validCoords } from "./location";
 
@@ -298,8 +300,20 @@ export function demoAction(
   const now = new Date().toISOString();
   if (action === "record_ride") {
     if (data.rides.some((r) => r.id === id)) return data;
-    const drive = Number(args.p_drive_minutes) * 60,
-      pause = Number(args.p_pause_minutes) * 60;
+    const rawCoRiders = Array.isArray(args.p_co_rider_ids)
+      ? args.p_co_rider_ids.map(String)
+      : [];
+    const shares = splitRideSeconds(
+      Number(args.p_drive_minutes),
+      Number(args.p_pause_minutes),
+      ["demo-0", ...rawCoRiders],
+    );
+    if (
+      shares.some(
+        (s) => !data.members.some((m) => m.id === s.member_id && m.active),
+      )
+    )
+      throw new Error("Aktives Mitglied nicht gefunden.");
     const eligible = data.packages.filter(
       (p) => p.purchased_at <= String(args.p_occurred_at),
     );
@@ -309,35 +323,46 @@ export function demoAction(
     const sLng = typeof args.p_start_lng === "number" ? args.p_start_lng : null;
     const eLat = typeof args.p_end_lat === "number" ? args.p_end_lat : null;
     const eLng = typeof args.p_end_lng === "number" ? args.p_end_lng : null;
-    data.rides.push({
-      id,
-      group_id: gid,
-      member_id: "demo-0",
-      occurred_at: String(args.p_occurred_at),
-      duration_seconds: drive,
-      pause_seconds: pause,
-      charged_seconds: drive + pause,
-      note: String(args.p_note ?? ""),
-      source: "manual",
-      estimated_cost_rappen: bought ? ((drive + pause) * price) / bought : null,
-      voided_at: null,
-      start_label: String(args.p_start_label ?? "").trim(),
-      start_lat: validCoords(sLat, sLng) ? roundCoord(sLat) : null,
-      start_lng: validCoords(sLat, sLng) ? roundCoord(sLng!) : null,
-      end_label: String(args.p_end_label ?? "").trim(),
-      end_lat: validCoords(eLat, eLng) ? roundCoord(eLat) : null,
-      end_lng: validCoords(eLat, eLng) ? roundCoord(eLng!) : null,
-    });
-    data.entries.push({
-      id: crypto.randomUUID(),
-      group_id: gid,
-      member_id: "demo-0",
-      seconds: -(drive + pause),
-      kind: "ride",
-      ride_id: id,
-      reason: "Fahrt inkl. Pause",
-      created_at: now,
-    });
+    const isShared = shares.length > 1;
+    const sharedGroupId = isShared ? id : null;
+    for (const share of shares) {
+      const rideId = share.member_id === "demo-0" ? id : crypto.randomUUID();
+      data.rides.push({
+        id: rideId,
+        group_id: gid,
+        member_id: share.member_id,
+        occurred_at: String(args.p_occurred_at),
+        duration_seconds: share.duration_seconds,
+        pause_seconds: share.pause_seconds,
+        charged_seconds: share.charged_seconds,
+        note: String(args.p_note ?? ""),
+        source: "manual",
+        estimated_cost_rappen: bought
+          ? (share.charged_seconds * price) / bought
+          : null,
+        voided_at: null,
+        start_label: String(args.p_start_label ?? "").trim(),
+        start_lat: validCoords(sLat, sLng) ? roundCoord(sLat) : null,
+        start_lng: validCoords(sLat, sLng) ? roundCoord(sLng!) : null,
+        end_label: String(args.p_end_label ?? "").trim(),
+        end_lat: validCoords(eLat, eLng) ? roundCoord(eLat) : null,
+        end_lng: validCoords(eLat, eLng) ? roundCoord(eLng!) : null,
+        shared_group_id: sharedGroupId,
+        shared_rider_count: shares.length,
+      });
+      data.entries.push({
+        id: crypto.randomUUID(),
+        group_id: gid,
+        member_id: share.member_id,
+        seconds: -share.charged_seconds,
+        kind: "ride",
+        ride_id: rideId,
+        reason: isShared
+          ? `Geteilte Fahrt (${shares.length} Personen)`
+          : "Fahrt inkl. Pause",
+        created_at: now,
+      });
+    }
   } else if (action === "credit_minutes")
     data.entries.push({
       id,
@@ -356,7 +381,7 @@ export function demoAction(
     const shares = splitPackage(
       Number(args.p_minutes),
       Number(args.p_price_rappen),
-      args.p_contributions,
+      args.p_contributions as TopupPlan,
     );
     if (
       shares.some(
@@ -409,19 +434,26 @@ export function demoAction(
   else if (action === "void_ride") {
     const r = data.rides.find((r) => r.id === args.p_ride_id);
     if (r && !r.voided_at) {
-      r.voided_at = now;
-      r.void_reason = String(args.p_reason);
-      r.voided_by_member_id = "demo-0";
-      data.entries.push({
-        id,
-        group_id: gid,
-        member_id: r.member_id,
-        seconds: r.charged_seconds,
-        kind: "reversal",
-        ride_id: r.id,
-        reason: String(args.p_reason),
-        created_at: now,
-      });
+      const targets = r.shared_group_id
+        ? data.rides.filter(
+            (s) => s.shared_group_id === r.shared_group_id && !s.voided_at,
+          )
+        : [r];
+      for (const s of targets) {
+        s.voided_at = now;
+        s.void_reason = String(args.p_reason);
+        s.voided_by_member_id = "demo-0";
+        data.entries.push({
+          id: s.id === r.id ? id : crypto.randomUUID(),
+          group_id: gid,
+          member_id: s.member_id,
+          seconds: s.charged_seconds,
+          kind: "reversal",
+          ride_id: s.id,
+          reason: String(args.p_reason),
+          created_at: now,
+        });
+      }
     }
   } else if (action === "rename_member") {
     const name = String(args.p_display_name).trim();
