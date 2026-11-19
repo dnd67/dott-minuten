@@ -586,6 +586,10 @@ export function Dashboard(p: Props) {
             <MessageSquare size={18} />
             <span>Feedback</span>
           </button>
+          <Link href="/datenschutz" className="nav-item sidebar-util">
+            <ShieldCheck size={18} />
+            <span>Datenschutz &amp; Recht</span>
+          </Link>
           <button className="profile" onClick={p.onLogout} disabled={p.busy}>
             {avatar(me)}
             <span>
@@ -1514,6 +1518,29 @@ export function Dashboard(p: Props) {
                       </button>
                     </div>
                   </div>
+                  <div className="preference-row">
+                    <div>
+                      <strong>Rechtliches &amp; Datenschutz</strong>
+                      <small>
+                        Datenschutzerklärung (CH DSG), Haftungsausschluss &amp;
+                        Impressum
+                      </small>
+                    </div>
+                    <div className="preference-buttons">
+                      <Link
+                        href="/datenschutz"
+                        className="button secondary compact-btn"
+                      >
+                        <ShieldCheck size={15} /> Datenschutz
+                      </Link>
+                      <Link
+                        href="/datenschutz#nutzungsbedingungen"
+                        className="button secondary compact-btn"
+                      >
+                        Nutzungsbedingungen
+                      </Link>
+                    </div>
+                  </div>
                 </div>
                 {p.groups.length > 1 && (
                   <div className="panel-footnote">
@@ -1551,8 +1578,15 @@ export function Dashboard(p: Props) {
                 : p.syncedAt
                   ? `Stand ${p.syncedAt.toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" })}`
                   : "Wird geladen"}{" "}
-              · Zürich
+              · Zürich · Unabhängiges Privatprojekt (keine Verbindung zu Dott)
             </span>
+            <nav className="footer-legal-links" aria-label="Rechtliche Links">
+              <Link href="/datenschutz">Datenschutz</Link>
+              <Link href="/datenschutz#nutzungsbedingungen">
+                Nutzungsbedingungen &amp; Haftung
+              </Link>
+              <Link href="/datenschutz#impressum">Impressum</Link>
+            </nav>
           </footer>
         </main>
       </div>

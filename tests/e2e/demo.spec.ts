@@ -366,3 +366,45 @@ test("Onboarding, Hell/Dunkel-Modus, Feedback-Vorschau und Dott-Entsperrung mit 
 
   await context.close();
 });
+
+test("Rechtliches: Datenschutzerklärung, Nutzungsbedingungen und Impressum auf iPhone-Breite erreichbar", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  await page.goto("http://localhost:3100/");
+  await page.getByRole("link", { name: "Datenschutzerklärung" }).click();
+  await expect(page).toHaveURL(/\/datenschutz$/);
+  await expect(
+    page.getByRole("heading", {
+      name: "Datenschutz, Nutzungsbedingungen & Haftung",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: /1\. Datenschutzerklärung/,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: /4\. Nutzungsbedingungen & Haftungsausschluss/,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: /5\. Impressum, Betreiberhinweis & Markenrecht/,
+    }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+  await page.getByRole("link", { name: "Zurück zur App" }).click();
+  await expect(
+    page.getByRole("button", { name: "Demo ausprobieren" }),
+  ).toBeVisible();
+  await context.close();
+});

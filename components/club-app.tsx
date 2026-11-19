@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
@@ -651,7 +652,14 @@ export function ClubApp() {
       </div>
 
       <footer className="entry-footer">
-        <span>Unabhängiges Projekt · Keine Verbindung zu Dott</span>
+        <span>Unabhängiges Privatprojekt · Keine Verbindung zu Dott</span>
+        <nav className="footer-legal-links" aria-label="Rechtliche Hinweise">
+          <Link href="/datenschutz">Datenschutzerklärung</Link>
+          <Link href="/datenschutz#nutzungsbedingungen">
+            Nutzungsbedingungen &amp; Haftung
+          </Link>
+          <Link href="/datenschutz#impressum">Impressum</Link>
+        </nav>
       </footer>
 
       {entryTour && (
@@ -692,6 +700,7 @@ function AuthForm({
   const [password, setPassword] = useState("");
   const [inviteInput, setInviteInput] = useState<string | null>(null);
   const [requiresInvite, setRequiresInvite] = useState(true);
+  const [acceptedLegal, setAcceptedLegal] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const [resetNote, setResetNote] = useState("");
   const [resetSent, setResetSent] = useState(false);
@@ -895,6 +904,25 @@ function AuthForm({
                 value={resetNote}
                 onChange={(e) => setResetNote(e.target.value)}
               />
+            </label>
+          )}
+
+          {mode === "register" && (
+            <label className="legal-consent">
+              <input
+                type="checkbox"
+                required
+                checked={acceptedLegal}
+                onChange={(e) => setAcceptedLegal(e.target.checked)}
+              />
+              <span>
+                Ich habe die{" "}
+                <Link href="/datenschutz">Datenschutzerklärung</Link> sowie die{" "}
+                <Link href="/datenschutz#nutzungsbedingungen">
+                  Nutzungsbedingungen &amp; den Haftungsausschluss
+                </Link>{" "}
+                gelesen und akzeptiere sie.
+              </span>
             </label>
           )}
 

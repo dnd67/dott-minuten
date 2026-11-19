@@ -19,6 +19,25 @@ const csp = [
 const config: NextConfig = {
   poweredByHeader: false,
   devIndicators: false,
+  async redirects() {
+    return [
+      {
+        source: "/impressum",
+        destination: "/datenschutz#impressum",
+        permanent: false,
+      },
+      {
+        source: "/nutzungsbedingungen",
+        destination: "/datenschutz#nutzungsbedingungen",
+        permanent: false,
+      },
+      {
+        source: "/agb",
+        destination: "/datenschutz#nutzungsbedingungen",
+        permanent: false,
+      },
+    ];
+  },
   async headers() {
     return [
       {
