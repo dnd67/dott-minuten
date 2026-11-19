@@ -1310,6 +1310,16 @@ body:has(.entry-dialog[open]) {
   color: var(--secondary);
   font-variant-numeric: tabular-nums;
 }
+.split-fraction {
+  justify-self: end;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 650;
+  padding: 0.16rem 0.48rem;
+  border-radius: 999px;
+  background: var(--inset);
+  color: var(--secondary);
+}
 .allocation-status {
   margin-bottom: 0.5rem;
 }

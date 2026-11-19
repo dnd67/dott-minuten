@@ -1857,11 +1857,21 @@ function EntryDialog({
   const [splitMode, setSplitMode] = useState<SplitMode>("equal");
   const [excluded, setExcluded] = useState<string[]>([]);
   const [needs, setNeeds] = useState<Record<string, string>>({});
+  const participatingCount = activeMembers.filter(
+    (m) => !excluded.includes(m.id),
+  ).length;
   let plan: TopupPlan = [];
   let allocation: ReturnType<typeof splitPackage> = [],
+    priceOnlyPreview: ReturnType<typeof splitPackage> = [],
     allocationMessage = "",
-    contributedRappen = 0;
+    contributedRappen = 0,
+    expectedRappen: number | null = null;
   if (kind === "package") {
+    try {
+      expectedRappen = packagePrice.trim() ? moneyRappen(packagePrice) : null;
+    } catch {
+      expectedRappen = null;
+    }
     try {
       if (splitMode === "amount") {
         plan = activeMembers.map((m) => ({
@@ -1889,6 +1899,17 @@ function EntryDialog({
         plan,
       );
     } catch (e) {
+      if (
+        splitMode === "equal" &&
+        expectedRappen !== null &&
+        expectedRappen >= 1
+      ) {
+        try {
+          priceOnlyPreview = splitPackage(1, expectedRappen, plan);
+        } catch {
+          /* Mindestens eine Person muss ausgewählt sein */
+        }
+      }
       allocationMessage =
         e instanceof Error ? e.message : "Bitte Eingaben prüfen.";
     }
@@ -2354,9 +2375,9 @@ function EntryDialog({
               <div className="split-modes">
                 {(
                   [
-                    ["equal", "Gleich aufteilen"],
-                    ["minutes", "Nach Minutenbedarf"],
+                    ["equal", "Fair aufteilen"],
                     ["amount", "Nach CHF-Beitrag"],
+                    ["minutes", "Nach Minutenbedarf"],
                   ] as const
                 ).map(([mode, label]) => (
                   <button
@@ -2374,13 +2395,18 @@ function EntryDialog({
               </div>
               <p>
                 {splitMode === "equal"
-                  ? "Wähle, wer mitmacht. Preis und Minuten werden gleichmässig geteilt."
+                  ? participatingCount > 0
+                    ? `Wähle, wer mitmacht (${participatingCount} von ${activeMembers.length} · je 1/${participatingCount} vom Preis & den Minuten).`
+                    : "Wähle mindestens eine Person aus, die beim Paket mitmacht."
                   : splitMode === "minutes"
                     ? "Wähle die Personen und trage ihren Bedarf in ganzen Minuten ein. Der Preis folgt den Minutenanteilen."
-                    : "Trage die bezahlten CHF-Beträge ein. Ein leeres Feld zählt als null."}
+                    : "Trage ein, wie viel jede Person in CHF gezahlt hat – die Minuten werden nach bezahltem Preis aufgeteilt."}
               </p>
               {activeMembers.map((m) => {
                 const share = allocation.find((c) => c.member_id === m.id);
+                const priceShare = priceOnlyPreview.find(
+                  (c) => c.member_id === m.id,
+                );
                 const selected = !excluded.includes(m.id);
                 const isAmount = splitMode === "amount";
                 const inputId = `share-${m.id}`;
@@ -2405,6 +2431,13 @@ function EntryDialog({
                         {m.display_name}
                       </label>
                     )}
+                    {splitMode === "equal" && (
+                      <span className="split-fraction">
+                        {selected && participatingCount > 0
+                          ? `1/${participatingCount}`
+                          : "–"}
+                      </span>
+                    )}
                     {(isAmount || (splitMode === "minutes" && selected)) && (
                       <input
                         id={inputId}
@@ -2425,18 +2458,23 @@ function EntryDialog({
                         }}
                       />
                     )}
-                    {share && (
+                    {share ? (
                       <small>
                         {share.minutes} Min. · {chf(share.amount_rappen)}
                       </small>
-                    )}
+                    ) : priceShare ? (
+                      <small>{chf(priceShare.amount_rappen)}</small>
+                    ) : null}
                   </div>
                 );
               })}
               {splitMode === "amount" && (
                 <div className="sum-line">
                   <span>Beiträge gesamt</span>
-                  <strong>{chf(contributedRappen)}</strong>
+                  <strong>
+                    {chf(contributedRappen)}
+                    {expectedRappen !== null ? ` / ${chf(expectedRappen)}` : ""}
+                  </strong>
                 </div>
               )}
               <div className="allocation-status" role="status">

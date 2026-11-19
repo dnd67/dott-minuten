@@ -28,11 +28,11 @@ Screenshots dienen momentan zum Ablesen. Die aktuelle Version erfasst die Werte 
 
 Erfasse den Kauf einmal als Admin unter **Guthaben → Guthaben aufladen**. Wähle die Person, die das Paket gekauft hat, und trage Paketminuten, Paketpreis in CHF und Kaufzeitpunkt ein. Die kaufende Person darf auch für andere einkaufen. Die Aufteilung bestimmt, auf welchen Konten die Minuten landen.
 
-| Schaltfläche       | Was du einträgst                                                                                                              | Beispiel für 600 Minuten zu CHF 90                                                                     |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Gleich aufteilen   | Wähle die Teilnehmenden mit den Häkchen aus. Anfangs sind alle aktiven Mitglieder ausgewählt.                                 | Oskar und Max machen mit. Beide erhalten 300 Minuten für je CHF 45. Augusts Konto bleibt unverändert.  |
-| Nach Minutenbedarf | Wähle die Personen und trage die gewünschten ganzen Minuten ein. Zusammen müssen sie die Paketgrösse ergeben.                 | Oskar braucht 200, August 300, Max 100 Minuten. Ihre Kostenanteile betragen CHF 30, CHF 45 und CHF 15. |
-| Nach CHF-Beitrag   | Trage pro Person den bereits bezahlten Betrag ein. Ein leeres Feld zählt als null. Die Summe muss dem Paketpreis entsprechen. | Oskar zahlt CHF 60 und Max CHF 30. Sie erhalten 400 und 200 Minuten.                                   |
+| Schaltfläche       | Was du einträgst                                                                                                                   | Beispiel für 600 Minuten zu CHF 90                                                                            |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Fair aufteilen     | Wähle die Teilnehmenden mit den Häkchen aus. Anfangs sind alle aktiven Mitglieder ausgewählt (je `1/N` vom Preis und den Minuten). | Oskar und Max machen mit (`1/2`). Beide erhalten 300 Minuten für je CHF 45. Augusts Konto bleibt unverändert. |
+| Nach Minutenbedarf | Wähle die Personen und trage die gewünschten ganzen Minuten ein. Zusammen müssen sie die Paketgrösse ergeben.                      | Oskar braucht 200, August 300, Max 100 Minuten. Ihre Kostenanteile betragen CHF 30, CHF 45 und CHF 15.        |
+| Nach CHF-Beitrag   | Trage pro Person den bereits bezahlten Betrag ein. Ein leeres Feld zählt als null. Die Summe muss dem Paketpreis entsprechen.      | Oskar zahlt CHF 60 und Max CHF 30. Sie erhalten 400 und 200 Minuten.                                          |
 
 ![Demo mit 600 Paketminuten. Der Minutenbedarf von Oskar, August und Max ergibt Kostenanteile von CHF 30, CHF 45 und CHF 15.](images/paketaufteilung-demo.png)
 

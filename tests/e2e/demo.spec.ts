@@ -426,10 +426,14 @@ test("Paket nach Teilnehmenden und Minutenbedarf aufteilen", async ({
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Minuten", { exact: true }).fill("100");
   await dialog.getByLabel("Paketpreis (CHF)").fill("10");
+  await expect(
+    dialog.getByRole("button", { name: "Fair aufteilen" }),
+  ).toHaveAttribute("aria-pressed", "true");
   await dialog.getByRole("checkbox", { name: "August" }).uncheck();
+  await expect(dialog.getByText(/2 von 3 · je 1\/2/)).toBeVisible();
   await expect(
     dialog.locator(".split-person").filter({ hasText: "Max" }),
-  ).toContainText(/50 Min.*5\.00/);
+  ).toContainText(/1\/2[\s\S]*50 Min.*5\.00/);
   await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(
     page.locator(".account-item").filter({ hasText: "Max" }),
