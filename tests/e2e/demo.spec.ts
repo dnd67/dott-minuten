@@ -238,7 +238,7 @@ test("Onboarding, Hell/Dunkel-Modus, Feedback-Vorschau und Dott-Entsperrung mit 
   });
 
   await page.goto("http://localhost:3100/");
-  // 1. Interaktive Onboarding-Tour von der Startseite aus testen
+  // 1. Animierte 5-Schritt Onboarding-Tour von der Startseite aus testen
   await page.getByRole("button", { name: "So funktioniert's" }).click();
   await expect(
     page.getByRole("heading", { name: /Dein Minutenpass/ }),
@@ -246,12 +246,50 @@ test("Onboarding, Hell/Dunkel-Modus, Feedback-Vorschau und Dott-Entsperrung mit 
   await page.getByRole("button", { name: "22 Min." }).click();
   await page.getByRole("button", { name: "3 Min." }).click();
   await expect(page.locator(".sim-pass-preview")).toContainText("25 Min.");
-  await page.getByRole("button", { name: "Weiter" }).click();
+  await page.getByRole("button", { name: "Nach CHF", exact: true }).click();
+  await expect(page.locator(".ob-split-legend")).toContainText("150 Min.");
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+
+  // Schritt 2: Gemeinsamer Scooter & Live-Split
+  await page.getByRole("button", { name: "Weiter", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Dott entsperren & Ort auf Wunsch" }),
+    page.getByRole("heading", { name: /Zu zweit unterwegs\?/ }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Weiter" }).click();
-  // Darstellungsmodus im Onboarding auf Hell schalten
+  await page.getByRole("button", { name: "+ Max" }).click();
+  await expect(page.locator(".ob-rider-avatars")).toContainText(/je 7,5 Min\./);
+
+  // Schritt 3: Live-Cockpit & Dynamic Island Vorschau
+  await page.getByRole("button", { name: "Weiter", exact: true }).click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Live auf Dynamic Island & Sperrbildschirm",
+    }),
+  ).toBeVisible();
+  await expect(page.locator(".ob-island-clock")).toHaveText(/\d{2}:\d{2}/);
+  await page.getByRole("button", { name: "Kompakt", exact: true }).click();
+  await expect(page.locator(".ob-island-capsule")).toHaveClass(/compact/);
+  await page.getByRole("button", { name: "Erweitert", exact: true }).click();
+  await expect(page.locator(".ob-island-capsule")).toHaveClass(/expanded/);
+
+  // Schritt 4: Adressen statt Koordinaten & Strecken-Bestzeiten
+  await page.getByRole("button", { name: "Weiter", exact: true }).click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Adressen statt Koordinaten & Bestzeiten",
+    }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Bellevue → Seefeld", exact: true })
+    .click();
+  await expect(page.locator(".ob-podium-bars")).toContainText("5 Min.");
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+
+  // Schritt 5: Darstellungsmodus im Onboarding auf Hell schalten & abschliessen
+  await page.getByRole("button", { name: "Weiter", exact: true }).click();
   await page.getByRole("button", { name: "Hell", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await page.getByRole("button", { name: "Loslegen" }).click();

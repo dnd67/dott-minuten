@@ -954,11 +954,11 @@ export function Dashboard(p: Props) {
                       <Sparkles size={15} /> Neu im Minutenclub
                     </span>
                     <strong>
-                      Entdecke Minutenpass, Dott-Entsperrung &amp;
-                      Standort-Schutz
+                      Neu: Mitfahren, Live-Timer, Dynamic Island &amp;
+                      Bestzeiten
                     </strong>
                     <p>
-                      Kurze interaktive Tour in 3 Schritten – jederzeit
+                      Kurze animierte Tour in 5 Schritten – jederzeit
                       überspringbar.
                     </p>
                   </div>
@@ -2092,6 +2092,7 @@ export function Dashboard(p: Props) {
                 }
               : undefined
           }
+          onOpenIslandGuide={() => setIslandGuideOpen({ motion: true })}
         />
       )}
       {feedbackOpen && (
