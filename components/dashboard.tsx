@@ -264,7 +264,8 @@ export function Dashboard(p: Props) {
   }, [activeUnlock, wakeLockOn]);
 
   const me = data.members.find((m) => m.user_id === p.userId && m.active);
-  const admin = me?.role === "admin";
+  const admin = !p.demo && me?.role === "admin";
+  const activeTab: Tab = tab === "dev" && !admin ? "overview" : tab;
   useEffect(() => {
     let active = true;
     readTourProgress(p.userId, p.demo)
@@ -356,7 +357,8 @@ export function Dashboard(p: Props) {
     .sort((a, b) => b.consumed - a.consumed);
 
   function navigate(next: Tab) {
-    setTab(next);
+    const target: Tab = next === "dev" && !admin ? "overview" : next;
+    setTab(target);
     window.scrollTo({ top: 0, behavior: "instant" });
   }
   function open(
@@ -364,6 +366,12 @@ export function Dashboard(p: Props) {
     clickCount: number,
     seed: RideSeed | null = null,
   ) {
+    if (
+      !admin &&
+      (kind === "credit" || kind === "package" || kind === "void")
+    ) {
+      return;
+    }
     p.onBeginAction();
     setRideSeed(seed);
     setModal({ kind, motion: clickCount > 0 });
@@ -440,13 +448,23 @@ export function Dashboard(p: Props) {
   }
 
   const currentTabLabel =
-    tab === "dev"
+    activeTab === "dev" && admin
       ? "Dev-Dashboard"
-      : (tabs.find((t) => t.id === tab)?.label ?? "Übersicht");
+      : (tabs.find((t) => t.id === activeTab)?.label ?? "Übersicht");
+
+  const activeModal =
+    modal &&
+    (admin ||
+      (modal.kind !== "credit" &&
+        modal.kind !== "package" &&
+        modal.kind !== "void" &&
+        (modal.kind !== "rename" || renameMember?.id === me?.id)))
+      ? modal
+      : null;
 
   const filters = (
     <div className="filters">
-      {tab === "rides" && (
+      {activeTab === "rides" && (
         <>
           <label className="sr-only" htmlFor="ride-status">
             Status
@@ -758,8 +776,8 @@ export function Dashboard(p: Props) {
           {tabs.map((t) => (
             <button
               key={t.id}
-              className={`nav-item ${tab === t.id ? "active" : ""}`}
-              aria-current={tab === t.id ? "page" : undefined}
+              className={`nav-item ${activeTab === t.id ? "active" : ""}`}
+              aria-current={activeTab === t.id ? "page" : undefined}
               onClick={() => navigate(t.id)}
             >
               <t.icon size={19} />
@@ -776,8 +794,8 @@ export function Dashboard(p: Props) {
           {admin && (
             <button
               type="button"
-              className={`nav-item sidebar-util ${tab === "dev" ? "active" : ""}`}
-              aria-current={tab === "dev" ? "page" : undefined}
+              className={`nav-item sidebar-util ${activeTab === "dev" ? "active" : ""}`}
+              aria-current={activeTab === "dev" ? "page" : undefined}
               onClick={() => navigate("dev")}
             >
               <Terminal size={18} />
@@ -849,10 +867,12 @@ export function Dashboard(p: Props) {
             {admin && (
               <button
                 type="button"
-                className={`dev-topbar-btn ${tab === "dev" ? "active-icon-btn" : ""}`}
+                className={`dev-topbar-btn ${activeTab === "dev" ? "active-icon-btn" : ""}`}
                 aria-label="Dev-Dashboard öffnen"
                 title="Admin Dev-Dashboard"
-                onClick={() => navigate(tab === "dev" ? "overview" : "dev")}
+                onClick={() =>
+                  navigate(activeTab === "dev" ? "overview" : "dev")
+                }
               >
                 <Terminal size={15} />
                 <span>Dev</span>
@@ -899,7 +919,7 @@ export function Dashboard(p: Props) {
               </button>
             </div>
           )}
-          {activeUnlock && liveMetrics && tab !== "overview" && (
+          {activeUnlock && liveMetrics && activeTab !== "overview" && (
             <div
               className="dynamic-pill-bar"
               role="status"
@@ -931,7 +951,7 @@ export function Dashboard(p: Props) {
               </button>
             </div>
           )}
-          {tab !== "overview" && (
+          {activeTab !== "overview" && (
             <div className="page-heading">
               <div>
                 <span className="eyebrow">{data.group.name.toUpperCase()}</span>
@@ -940,7 +960,7 @@ export function Dashboard(p: Props) {
               {rideButton}
             </div>
           )}
-          {tab === "overview" && (
+          {activeTab === "overview" && (
             <>
               <h1 className="overview-heading">
                 Hoi {me?.display_name ?? "zusammen"}
@@ -1259,7 +1279,7 @@ export function Dashboard(p: Props) {
               </section>
             </>
           )}
-          {tab === "rides" && (
+          {activeTab === "rides" && (
             <section className="panel">
               <PanelHeading
                 title={(() => {
@@ -1286,7 +1306,7 @@ export function Dashboard(p: Props) {
               </p>
             </section>
           )}
-          {tab === "balance" && (
+          {activeTab === "balance" && (
             <>
               <section className="metric-grid">
                 <Metric
@@ -1477,7 +1497,7 @@ export function Dashboard(p: Props) {
               </section>
             </>
           )}
-          {tab === "stats" && (
+          {activeTab === "stats" && (
             <>
               <div className="section-filter">{filters}</div>
               <section className="metric-grid">
@@ -1590,7 +1610,7 @@ export function Dashboard(p: Props) {
               </section>
             </>
           )}
-          {tab === "members" && (
+          {activeTab === "members" && (
             <>
               <section className="panel">
                 <PanelHeading
@@ -1633,13 +1653,9 @@ export function Dashboard(p: Props) {
                     ) : undefined
                   }
                 />
-                {code && (
+                {admin && code && (
                   <div className="invite-box">
-                    <strong>
-                      {p.demo
-                        ? "Beispiel-Einladung"
-                        : "Einladungscode · 7 Tage gültig"}
-                    </strong>
+                    <strong>Einladungscode · 7 Tage gültig</strong>
                     <p>
                       Teile direkt den Einladungslink – nach dem Anmelden per
                       Benutzername &amp; Passwort wird der Code automatisch
@@ -1807,7 +1823,7 @@ export function Dashboard(p: Props) {
                 admin={admin}
                 members={data.members}
                 accounts={data.accounts ?? []}
-                resetRequests={data.reset_requests ?? []}
+                resetRequests={admin ? (data.reset_requests ?? []) : []}
                 busy={p.busy}
                 renderAvatar={avatar}
                 onSetMemberPassword={p.onSetMemberPassword}
@@ -1961,9 +1977,11 @@ export function Dashboard(p: Props) {
               </section>
             </>
           )}
-          {tab === "dev" && admin && (
+          {activeTab === "dev" && admin && !p.demo && (
             <DevDashboard
               data={data}
+              admin={admin}
+              demo={p.demo}
               busy={p.busy}
               mutate={p.mutate}
               renderAvatar={avatar}
@@ -1998,31 +2016,31 @@ export function Dashboard(p: Props) {
         </main>
       </div>
       <nav className="mobile-nav" aria-label="Mobile Navigation">
-        {tabs.some((t) => t.id === tab) && (
+        {tabs.some((t) => t.id === activeTab) && (
           <span
             aria-hidden="true"
             className="tab-indicator"
             style={{
-              transform: `translateX(${tabs.findIndex((t) => t.id === tab) * 100}%)`,
+              transform: `translateX(${tabs.findIndex((t) => t.id === activeTab) * 100}%)`,
             }}
           />
         )}
         {tabs.map((t) => (
           <button
             key={t.id}
-            aria-current={tab === t.id ? "page" : undefined}
+            aria-current={activeTab === t.id ? "page" : undefined}
             onClick={() => navigate(t.id)}
-            className={tab === t.id ? "active" : ""}
+            className={activeTab === t.id ? "active" : ""}
           >
             <t.icon size={20} />
             <span>{t.label}</span>
           </button>
         ))}
       </nav>
-      {modal && (
+      {activeModal && (
         <EntryDialog
-          kind={modal.kind}
-          motion={modal.motion}
+          kind={activeModal.kind}
+          motion={activeModal.motion}
           data={data}
           me={me}
           seed={rideSeed}

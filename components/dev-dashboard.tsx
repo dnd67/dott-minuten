@@ -32,6 +32,8 @@ import {
 
 type Props = {
   data: Snapshot;
+  admin: boolean;
+  demo?: boolean;
   busy: boolean;
   mutate: (action: Action, args: RpcArgs) => Promise<string | boolean>;
   renderAvatar: (member: Member | undefined, size?: string) => ReactNode;
@@ -39,7 +41,14 @@ type Props = {
 
 type TelemetryFilter = "all" | "gps" | "manual" | "unlock" | "shared";
 
-export function DevDashboard({ data, busy, mutate, renderAvatar }: Props) {
+export function DevDashboard({
+  data,
+  admin,
+  demo = false,
+  busy,
+  mutate,
+  renderAvatar,
+}: Props) {
   const [filter, setFilter] = useState<TelemetryFilter>("all");
   const [label, setLabel] = useState("");
   const [address, setAddress] = useState("");
@@ -49,6 +58,8 @@ export function DevDashboard({ data, busy, mutate, renderAvatar }: Props) {
   const [searching, setSearching] = useState(false);
   const [placeMsg, setPlaceMsg] = useState("");
   const [placeErr, setPlaceErr] = useState("");
+
+  if (demo || !admin) return null;
 
   const places: GroupPlace[] = (data.places ?? []).filter(
     (p) => p.active !== false,
@@ -121,6 +132,7 @@ export function DevDashboard({ data, busy, mutate, renderAvatar }: Props) {
 
   async function savePlace(e: React.FormEvent) {
     e.preventDefault();
+    if (demo || !admin) return;
     setPlaceErr("");
     setPlaceMsg("");
     const parsedLat = Number(lat.replace(",", "."));
@@ -410,6 +422,7 @@ export function DevDashboard({ data, busy, mutate, renderAvatar }: Props) {
                 title="Ort entfernen"
                 disabled={busy}
                 onClick={() => {
+                  if (demo || !admin) return;
                   if (
                     window.confirm(
                       `Crew-Ort «${p.label}» wirklich entfernen? Bisher gespeicherte Fahrten behalten ihren Text.`,
