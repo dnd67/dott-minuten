@@ -1,4 +1,6 @@
 import { test, expect } from "@playwright/test";
+import { DEMO_USER, demoSnapshot } from "../../lib/demo";
+import { availableFeatures } from "../../lib/onboarding";
 test("Demo: Fahrt, Guthaben, Paket, Storno, Filter und Einladung", async ({
   page,
 }) => {
@@ -6,6 +8,7 @@ test("Demo: Fahrt, Guthaben, Paket, Storno, Filter und Einladung", async ({
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
   await page.getByRole("button", { name: "Demo ausprobieren" }).click();
+  await page.getByRole("button", { name: "Überspringen" }).click();
   await expect(page.getByRole("heading", { name: "Hoi Oskar" })).toBeVisible();
   const addRide = page.getByRole("button", { name: "Fahrt eintragen" });
   await addRide.click();
@@ -87,6 +90,7 @@ test("iPhone-Abmessungen: alle Seiten bedienbar, Dialog und Offline-Hinweis", as
   });
   const page = await context.newPage();
   await page.goto("http://localhost:3100/?demo=1");
+  await page.getByRole("button", { name: "Überspringen" }).click();
   await expect(page.getByRole("heading", { name: "Hoi Oskar" })).toBeVisible();
   for (const tab of [
     "Fahrten",
@@ -153,6 +157,7 @@ test("Aufladen nach Beiträgen aktualisiert Home, Restguthaben und Kontingentdia
   page,
 }) => {
   await page.goto("/?demo=1");
+  await page.getByRole("button", { name: "Überspringen" }).click();
   await expect(
     page.getByRole("img", {
       name: "Oskar: 51 von 200 Minuten verbraucht, 149 Minuten übrig.",
@@ -246,11 +251,17 @@ test("Onboarding, Hell/Dunkel-Modus, Feedback-Vorschau und Dott-Entsperrung mit 
   await page.getByRole("button", { name: "22 Min." }).click();
   await page.getByRole("button", { name: "3 Min." }).click();
   await expect(page.locator(".sim-pass-preview")).toContainText("25 Min.");
-  await page.getByRole("button", { name: "Weiter" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Dott entsperren & Ort auf Wunsch" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Weiter" }).click();
+  for (const title of [
+    "Ein Paket, eure Anteile",
+    "Eine Fahrt gemeinsam abrechnen",
+    "Deine Fahrt bleibt im Blick",
+    "Eure Strecken und Bestzeiten",
+    "Dein Zugang zur Crew",
+    "Bereit für unterwegs",
+  ]) {
+    await page.getByRole("button", { name: "Weiter" }).click();
+    await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  }
   // Darstellungsmodus im Onboarding auf Hell schalten
   await page.getByRole("button", { name: "Hell", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
@@ -258,6 +269,10 @@ test("Onboarding, Hell/Dunkel-Modus, Feedback-Vorschau und Dott-Entsperrung mit 
 
   // Demo starten – noch KEIN Standortabruf beim blossen Laden!
   await page.getByRole("button", { name: "Demo ausprobieren" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Dein Minutenpass" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Überspringen" }).click();
   expect(
     await page.evaluate(
       () => (window as unknown as { __geoCalls: number }).__geoCalls,
@@ -417,6 +432,7 @@ test("Paket nach Teilnehmenden und Minutenbedarf aufteilen", async ({
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/?demo=1");
+  await page.getByRole("button", { name: "Überspringen" }).click();
   await page
     .locator(".mobile-nav")
     .getByRole("button", { name: "Guthaben", exact: true })
@@ -463,6 +479,7 @@ test("Gemeinsame Fahrt auf dem gleichen Scooter während aktiver Fahrt auswähle
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/?demo=1");
+  await page.getByRole("button", { name: "Überspringen" }).click();
 
   // 1. Scooter entsperren und Fahrt starten
   await page.getByRole("button", { name: "Dott entsperren" }).click();
@@ -544,6 +561,7 @@ test("Admin Dev-Dashboard (GPS-Telemetrie, 100-m-Crew-Orte) und Strecken-Bestzei
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/?demo=1");
+  await page.getByRole("button", { name: "Überspringen" }).click();
 
   // 1. Strecken-Bestzeiten in Statistik prüfen
   await page
@@ -578,4 +596,91 @@ test("Admin Dev-Dashboard (GPS-Telemetrie, 100-m-Crew-Orte) und Strecken-Bestzei
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
+});
+
+test("Bestehende Konten sehen nur Neuerungen und setzen eine unterbrochene Tour fort", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 320, height: 650 });
+  await page.goto("/");
+  await page.evaluate(() =>
+    localStorage.setItem("minutenclub-onboarding-done-v1", "1"),
+  );
+  await page.goto("/?demo=1");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Neu für dich")).toBeVisible();
+  await expect(dialog.getByRole("heading")).toHaveText(
+    "Ein Paket, eure Anteile",
+  );
+  await dialog.getByRole("button", { name: "Minutenbedarf" }).click();
+  await expect(dialog.getByText("Du · 70 Min.")).toBeVisible();
+  expect(
+    await dialog
+      .locator(".tour-slide")
+      .evaluate((el) => getComputedStyle(el).animationName),
+  ).toBe("none");
+  expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+    true,
+  );
+  await dialog.getByRole("button", { name: "Weiter" }).click();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await page.reload();
+  await expect(dialog.getByRole("heading")).toHaveText(
+    "Eine Fahrt gemeinsam abrechnen",
+  );
+  for (const title of [
+    "Deine Fahrt bleibt im Blick",
+    "Eure Strecken und Bestzeiten",
+    "Dein Zugang zur Crew",
+    "Deine Werkzeuge als Admin",
+  ]) {
+    await dialog.getByRole("button", { name: "Weiter" }).click();
+    await expect(dialog.getByRole("heading")).toHaveText(title);
+  }
+  await dialog.getByRole("button", { name: "Alles klar" }).click();
+  await page.reload();
+  await page
+    .locator(".mobile-nav")
+    .getByRole("button", { name: "Mitglieder" })
+    .click();
+  const replay = page.getByRole("button", { name: "Einführung", exact: true });
+  await replay.click();
+  await expect(dialog.getByRole("heading")).toHaveText("Dein Minutenpass");
+  await page.keyboard.press("Escape");
+  await expect(replay).toBeFocused();
+});
+
+test("Ein einzelnes neues Feature erscheint auf dem Mitgliedskonto ohne Admin-Karten", async ({
+  page,
+}) => {
+  const data = demoSnapshot();
+  data.members.find((m) => m.user_id === DEMO_USER)!.role = "member";
+  await page.goto("/");
+  await page.evaluate(
+    ({ data, seen }) => {
+      localStorage.setItem("minutenclub-demo-v1", JSON.stringify(data));
+      localStorage.setItem("minutenclub-demo-tour-v2", JSON.stringify(seen));
+    },
+    {
+      data,
+      seen: availableFeatures(false).filter((id) => id !== "live-cockpit"),
+    },
+  );
+  await page.goto("/?demo=1");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading")).toHaveText(
+    "Deine Fahrt bleibt im Blick",
+  );
+  await expect(dialog.getByLabel("Schritt 1 von 1")).toBeVisible();
+  await dialog.getByRole("button", { name: "Anderer Tab" }).click();
+  await expect(dialog.locator(".tour-live")).toHaveAttribute(
+    "data-compact",
+    "true",
+  );
+  await dialog.getByRole("button", { name: "Alles klar" }).click();
+  await page.reload();
+  await page.getByRole("button", { name: "Fahrt eintragen" }).click();
+  await expect(page.getByLabel("Fahrzeit (Minuten)")).toBeVisible();
 });

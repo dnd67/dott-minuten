@@ -132,6 +132,7 @@ export default function LegalPage() {
                 <strong>Konto- und Gruppenmitgliedschaftsdaten:</strong>{" "}
                 Benutzername, gewählter Anzeigename innerhalb der Gruppe, Rolle
                 (<code>Admin</code> oder <code>Mitglied</code>), Aktivstatus,
+                bereits bestätigte oder übersprungene Karten der Einführung,
                 Zeitpunkt der letzten Passwortaktualisierung sowie freiwillige
                 Hinweise bei einer Passwort-Zurücksetzungsanfrage an den
                 Gruppen-Admin.
@@ -289,8 +290,8 @@ export default function LegalPage() {
               deines Browsers (<code>localStorage</code> /{" "}
               <code>sessionStorage</code>) werden ausschliesslich technisch
               erforderliche Einträge abgelegt: deine aktuelle Anmeldesitzung,
-              deine Designwahl (Hell/Dunkel/System), ob du die Einführung schon
-              gesehen hast, ein laufender Entsperr-Timer, ein übergebener
+              deine Designwahl (Hell/Dunkel/System), der Tourfortschritt in der
+              lokalen Demo, ein laufender Entsperr-Timer, ein übergebener
               Einladungscode sowie allfällige lokale Demo-Daten.
             </p>
 

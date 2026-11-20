@@ -36,6 +36,7 @@ import {
 } from "@/lib/accounts";
 import { DEMO_USER, demoAction, demoSnapshot } from "@/lib/demo";
 import type { Action, Group, RpcArgs, Snapshot } from "@/lib/domain";
+import { availableFeatures } from "@/lib/onboarding";
 import { Dashboard } from "./dashboard";
 import { OnboardingModal } from "./onboarding-modal";
 import { ThemeCycleButton } from "./theme-toggle";
@@ -71,7 +72,6 @@ export function ClubApp() {
   const [syncedAt, setSyncedAt] = useState<Date | null>(null);
   const [pendingInvite, setPendingInvite] = useState("");
   const [entryTour, setEntryTour] = useState(false);
-  const [justOnboarded, setJustOnboarded] = useState(false);
   const refreshRef = useRef<() => Promise<void>>(async () => {});
   const command = useRef<{ payload: string; id: string } | null>(null);
   const busyRef = useRef(false);
@@ -428,7 +428,6 @@ export function ClubApp() {
       } catch {}
       if (window.location.search.includes("invite="))
         window.history.replaceState({}, "", window.location.pathname);
-      setJustOnboarded(true);
       await loadGroups();
       setGroupId(String(response.data));
     } catch (e) {
@@ -456,7 +455,6 @@ export function ClubApp() {
     setGroupsReady(false);
     setError("");
     setSyncedAt(null);
-    setJustOnboarded(false);
     command.current = null;
     if (window.location.search)
       window.history.replaceState({}, "", window.location.pathname);
@@ -467,15 +465,18 @@ export function ClubApp() {
     : ((session?.user.app_metadata?.username as string | undefined) ??
       emailToUsername(session?.user.email));
 
+  const activeMember = snapshot?.members.find(
+    (m) => m.user_id === (demo ? DEMO_USER : userId) && m.active,
+  );
+
   if (
     (demo || session) &&
     snapshot &&
-    (demo ||
-      (snapshot.group.id === groupId &&
-        snapshot.members.some((m) => m.user_id === userId && m.active)))
+    (demo || (snapshot.group.id === groupId && activeMember))
   )
     return (
       <Dashboard
+        key={`${demo ? "demo" : userId}-${activeMember?.role}`}
         data={snapshot}
         groups={demo ? [snapshot.group] : groups}
         userId={demo ? DEMO_USER : session!.user.id}
@@ -486,8 +487,6 @@ export function ClubApp() {
         syncedAt={syncedAt}
         error={error}
         busy={busy}
-        autoOpenTour={justOnboarded}
-        onTourOpened={() => setJustOnboarded(false)}
         mutate={mutate}
         onSetMemberPassword={handleSetMemberPassword}
         onCreateMemberAccount={handleCreateMemberAccount}
@@ -665,7 +664,7 @@ export function ClubApp() {
 
       {entryTour && (
         <OnboardingModal
-          motion={true}
+          tour={{ features: availableFeatures(false), updates: false }}
           groupName="Minutenclub"
           onClose={() => setEntryTour(false)}
         />

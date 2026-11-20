@@ -85,10 +85,11 @@ import {
   saveAutoShortcutEnabled,
 } from "@/lib/live-activity";
 import {
-  isOnboardingDone,
-  markOnboardingDone,
-  OnboardingModal,
-} from "./onboarding-modal";
+  acknowledgeFeatures,
+  availableFeatures,
+  readTourProgress,
+} from "@/lib/onboarding";
+import { OnboardingModal, type Tour } from "./onboarding-modal";
 import { PasswordDashboard } from "./password-dashboard";
 import { ThemeCycleButton, ThemeSegmented } from "./theme-toggle";
 
@@ -121,8 +122,6 @@ type Props = {
   syncedAt: Date | null;
   error: string;
   busy: boolean;
-  autoOpenTour?: boolean;
-  onTourOpened?: () => void;
   mutate: (action: Action, args: RpcArgs) => Promise<string | boolean>;
   onSetMemberPassword: (
     memberId: string,
@@ -196,8 +195,10 @@ export function Dashboard(p: Props) {
     [period, setPeriod] = useState("all");
   const [code, setCode] = useState(""),
     [copied, setCopied] = useState<"code" | "link" | null>(null);
-  const [tourOpen, setTourOpen] = useState(false);
-  const [tourBannerHidden, setTourBannerHidden] = useState(true);
+  const [tour, setTour] = useState<Tour | null>(null);
+  const [tourLoadFailed, setTourLoadFailed] = useState(false);
+  const [tourAttempt, setTourAttempt] = useState(0);
+  const tourRequested = useRef(false);
   const [feedbackOpen, setFeedbackOpen] = useState<{ motion: boolean } | null>(
     null,
   );
@@ -212,19 +213,11 @@ export function Dashboard(p: Props) {
   const [nowTick, setNowTick] = useState(() => Date.now());
 
   useEffect(() => {
-    setTourBannerHidden(isOnboardingDone());
     setAutoShortcut(loadAutoShortcutEnabled());
     setWakeLockSupported(
       typeof navigator !== "undefined" && "wakeLock" in navigator,
     );
   }, []);
-
-  useEffect(() => {
-    if (p.autoOpenTour) {
-      setTourOpen(true);
-      p.onTourOpened?.();
-    }
-  }, [p]);
 
   useEffect(() => {
     setActiveUnlock(loadActiveUnlock(data.group.id, p.userId));
@@ -272,6 +265,37 @@ export function Dashboard(p: Props) {
 
   const me = data.members.find((m) => m.user_id === p.userId && m.active);
   const admin = me?.role === "admin";
+  useEffect(() => {
+    let active = true;
+    readTourProgress(p.userId, p.demo)
+      .then((seen) => {
+        if (!active) return;
+        setTourLoadFailed(false);
+        if (tourRequested.current) return;
+        const features = availableFeatures(admin).filter(
+          (id) => !seen.includes(id),
+        );
+        if (features.length) {
+          setTour({
+            features,
+            updates:
+              seen.includes("minute-pass") && seen.includes("appearance"),
+          });
+        }
+      })
+      .catch(() => {
+        if (active) setTourLoadFailed(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [admin, p.userId, p.demo, tourAttempt]);
+
+  function replayTour() {
+    tourRequested.current = true;
+    setTour({ features: availableFeatures(admin), updates: false });
+  }
+
   const openResetsCount = admin
     ? (data.reset_requests ?? []).filter((r) => r.status === "open").length
     : 0;
@@ -947,42 +971,17 @@ export function Dashboard(p: Props) {
                 </div>
               )}
 
-              {!tourBannerHidden && (
-                <section className="onboarding-banner" aria-label="Einführung">
-                  <div className="onboarding-banner-text">
-                    <span className="onboarding-badge">
-                      <Sparkles size={15} /> Neu im Minutenclub
-                    </span>
-                    <strong>
-                      Entdecke Minutenpass, Dott-Entsperrung &amp;
-                      Standort-Schutz
-                    </strong>
-                    <p>
-                      Kurze interaktive Tour in 3 Schritten – jederzeit
-                      überspringbar.
-                    </p>
-                  </div>
-                  <div className="onboarding-banner-actions">
-                    <button
-                      type="button"
-                      className="button secondary compact-btn"
-                      onClick={() => setTourOpen(true)}
-                    >
-                      Tour starten <ArrowRight size={16} />
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-button"
-                      aria-label="Einführung ausblenden"
-                      onClick={() => {
-                        markOnboardingDone();
-                        setTourBannerHidden(true);
-                      }}
-                    >
-                      <X size={17} />
-                    </button>
-                  </div>
-                </section>
+              {tourLoadFailed && (
+                <div className="notice" role="status">
+                  Die Einführung konnte nicht geladen werden.{" "}
+                  <button
+                    type="button"
+                    className="text-link"
+                    onClick={() => setTourAttempt((n) => n + 1)}
+                  >
+                    Erneut versuchen
+                  </button>
+                </div>
               )}
 
               {activeUnlock && liveMetrics && (
@@ -1857,7 +1856,7 @@ export function Dashboard(p: Props) {
                       <button
                         type="button"
                         className="button secondary compact-btn"
-                        onClick={() => setTourOpen(true)}
+                        onClick={replayTour}
                       >
                         <Sparkles size={15} /> Einführung
                       </button>
@@ -2076,17 +2075,15 @@ export function Dashboard(p: Props) {
           onSave={p.mutate}
         />
       )}
-      {tourOpen && (
+      {tour && (
         <OnboardingModal
-          motion={true}
+          tour={tour}
           groupName={data.group.name}
           memberName={me?.display_name}
-          onClose={() => {
-            setTourOpen(false);
-            setTourBannerHidden(true);
-          }}
+          onClose={() => setTour(null)}
+          onAcknowledge={(ids) => acknowledgeFeatures(p.userId, p.demo, ids)}
           onStartUnlock={
-            me
+            me && !activeUnlock
               ? () => {
                   open("unlock", 1);
                 }

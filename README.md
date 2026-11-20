@@ -20,7 +20,7 @@ Eine iPhone-taugliche Web-App für eure gemeinsamen Scooter-Minutenpakete. Jede 
 - Eigene Fahrten manuell erfassen oder live per **Dott entsperren** starten: **Verbrauch = Fahrzeit + Pausierzeit**.
 - **Optionale Standortfreigabe nur bei aktiver Verwendung:** Beim Entsperren oder Speichern lässt sich der aktuelle Standort einmalig per Knopfdruck übernehmen (kein `watchPosition`, kein Hintergrund-Tracking, lokale Zuordnung auf dem Gerät).
 - **Uhrzeit- und Zielstatistik:** Auswertung über 24 Stunden, Tageszeiten, beliebteste Ziele und Routenprofile (_wer wie oft um welche Uhrzeit wohin gefahren ist_).
-- **Interaktives Onboarding & Einladungslinks:** 3-stufige Einführungstour mit Pass-Simulator sowie teilbare Einladungslinks (`?invite=...`), die nach der Anmeldung automatisch übernommen werden.
+- **Interaktives Onboarding & Einladungslinks:** Animierte Feature-Tour mit Pass-Simulator und Beispielbuchungen. Neue Konten erhalten die ganze Einführung, bestehende Konten nur ausstehende Neuerungen. Dazu kommen teilbare Einladungslinks (`?invite=...`), die nach der Anmeldung automatisch übernommen werden.
 - **Dark & Light Mode:** Folgt automatisch der Systemeinstellung (für gute Lesbarkeit draussen in der Sonne sowie abends) oder lässt sich direkt zwischen _System_, _Hell_ und _Dunkel_ umschalten.
 - **Vorbereitetes Feedback-Fenster:** Direkt in der App testbar und beim Launch auf Vercel & Supabase über `NEXT_PUBLIC_FEEDBACK_ENABLED=true` sofort live in `public.feedback` aktivierbar.
 - Frei wählbare positive Minutengutschriften durch Admins, keine festen Aufladepakete.
