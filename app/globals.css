@@ -1713,7 +1713,6 @@ tr.voided td {
   gap: 0.55rem;
   align-items: center;
 }
-.onboarding-banner,
 .unlock-live-card {
   display: flex;
   align-items: center;
@@ -1726,28 +1725,6 @@ tr.voided td {
   background: var(--surface);
   border: 1px solid var(--line);
 }
-.onboarding-banner-text {
-  flex: 1 1 14rem;
-  min-width: 0;
-}
-.onboarding-banner-text strong {
-  display: block;
-  margin-top: 0.25rem;
-}
-.onboarding-banner-text p {
-  color: var(--secondary);
-  font-size: 0.86rem;
-  margin-top: 0.2rem;
-}
-.onboarding-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.76rem;
-  font-weight: 650;
-  color: var(--tint);
-}
-.onboarding-banner-actions,
 .unlock-live-actions {
   display: flex;
   align-items: center;
@@ -1781,105 +1758,265 @@ tr.voided td {
   background: var(--positive);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--positive) 24%, transparent);
 }
+/* The feature tour uses the same graphite ticket as the personal pass. */
 .onboarding-dialog {
-  width: min(35rem, calc(100% - 1.5rem));
+  --tour-notch: var(--surface);
+  width: min(31rem, calc(100% - 2rem));
 }
-.onboarding-inner {
-  overflow-x: clip;
+.onboarding-dialog .dialog-inner {
+  padding: clamp(1rem, 4vw, 1.6rem);
 }
-.onboarding-progress {
+.tour-header,
+.tour-ticket-head,
+.tour-value,
+.tour-control,
+.tour-readout,
+.tour-identity {
   display: flex;
   align-items: center;
-  gap: 0.38rem;
-  margin-bottom: 1rem;
-  padding-right: 2.5rem;
+  gap: 0.65rem;
 }
-.onboarding-dot {
-  width: 1.25rem;
-  height: 6px;
-  border-radius: 99px;
-  background: var(--inset);
-  padding: 0;
-  transition:
-    width 280ms cubic-bezier(0.22, 1, 0.36, 1),
-    background-color 220ms ease;
+.tour-header .icon-button {
+  width: 2rem;
+  height: 2rem;
+  min-height: 2rem;
 }
-.onboarding-dot.done {
-  background: var(--secondary);
+.tour-kicker {
+  font-weight: 700;
+  font-size: 0.84rem;
 }
-.onboarding-dot.active {
-  width: 2.4rem;
+.tour-counter {
+  margin-left: auto;
+  color: var(--secondary);
+  font:
+    600 0.75rem ui-monospace,
+    monospace;
+}
+.tour-progress {
+  display: flex;
+  gap: 0.25rem;
+  margin: 0.6rem 0 1.1rem;
+}
+.tour-progress button {
+  flex: 1;
+  padding: 0.45rem 0;
+  background: transparent;
+  min-width: 0;
+}
+.tour-progress button::after {
+  display: block;
+  content: "";
+  height: 3px;
+  border-radius: 2px;
+  background: var(--soft);
+}
+.tour-progress button[data-current]::after {
   background: var(--tint);
 }
-.onboarding-step-label {
-  margin-left: auto;
-  font-size: 0.76rem;
+.tour-ticket {
+  --surface: #303035;
+  --ink: #f6f6f8;
+  --secondary: #c9c9cf;
+  --tint: #e5e5eb;
+  --on-tint: #171719;
+  --line: #55555d;
+  --inset: #242427;
+  --positive: #86efac;
+  --ticket: #252527;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  color-scheme: dark;
+  color: #f6f6f8;
+  background:
+    radial-gradient(ellipse at 95% 0%, #414147, transparent 60%), #222225;
+  border-radius: 1rem;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14);
+}
+.tour-ticket-head {
+  height: 2.65rem;
+  margin: 0 1.1rem;
+  justify-content: space-between;
+  border-bottom: 1px dashed #77777e;
+}
+.tour-ticket::before,
+.tour-ticket::after {
+  content: "";
+  position: absolute;
+  top: 2.25rem;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 50%;
+  background: var(--tour-notch);
+}
+.tour-ticket::before {
+  left: -0.4rem;
+}
+.tour-ticket::after {
+  right: -0.4rem;
+}
+.tour-ticket-head span {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: center;
+  font-size: 0.79rem;
+  font-weight: 700;
+}
+.tour-ticket-head span + span,
+.tour-ticket-label {
+  font:
+    600 0.65rem ui-monospace,
+    monospace;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #d2d2d7;
+}
+.tour-ticket-body {
+  display: grid;
+  align-content: center;
+  gap: 0.72rem;
+  min-height: 11rem;
+  padding: 1rem 1.2rem 1.25rem;
+}
+.tour-value,
+.tour-control {
+  justify-content: space-between;
+}
+.tour-value strong {
+  font-size: clamp(2rem, 9vw, 3.1rem);
+  line-height: 1;
+  letter-spacing: -0.06em;
   font-variant-numeric: tabular-nums;
+}
+.tour-value strong small {
+  font-size: 0.43em;
+  letter-spacing: -0.03em;
+  color: #c7c7cc;
+}
+.tour-control,
+.tour-value > span,
+.tour-readout {
+  font-size: 0.83rem;
+}
+.tour-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.tour-options button {
+  min-height: 2rem;
+  border: 1px solid #64646b;
+  background: #303035;
+  color: #f8f8fa;
+  border-radius: 0.55rem;
+  padding: 0.25rem 0.5rem;
+  font: inherit;
+  font-size: 0.78rem;
+}
+.tour-options button[aria-pressed="true"] {
+  background: #eeeef2;
+  color: #17171a;
+  border-color: #eeeef2;
+  font-weight: 700;
+}
+.tour-ticket :focus-visible {
+  outline-color: white;
+}
+.tour-identity small {
+  display: block;
+  margin-top: 0.15rem;
+  color: #c6c6cc;
+}
+.tour-identity strong {
+  font-size: 1.25rem;
+}
+.tour-avatar,
+.tour-zone {
+  width: 3rem;
+  height: 3rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid #76767f;
+  border-radius: 1rem;
+  background: #39393f;
+}
+.tour-zone {
+  border-radius: 50%;
+  outline: 1px dashed #87878d;
+  outline-offset: 3px;
+}
+.tour-readout {
+  color: #dcdce2;
+  flex-wrap: wrap;
+}
+.tour-readout b {
+  margin-left: auto;
+  color: white;
+  font-variant-numeric: tabular-nums;
+}
+.tour-ticket .segmented-control {
+  --inset: #27272a;
+  --surface: #46464c;
+  --ink: white;
+  --secondary: #d1d1d6;
+  --line: #65656c;
+  justify-self: start;
+}
+.tour-copy {
+  margin: 1.25rem 0;
+}
+.tour-copy .eyebrow {
   color: var(--secondary);
+  overflow-wrap: anywhere;
 }
-.onboarding-viewport {
-  overflow-x: clip;
+.tour-copy h2 {
+  margin: 0.3rem 0 0.5rem;
+  font-size: clamp(1.45rem, 5vw, 1.85rem);
+  letter-spacing: -0.045em;
+  line-height: 1.08;
 }
-.onboarding-step > .eyebrow {
-  margin-bottom: 0.3rem;
+.tour-copy h2:focus {
+  outline: 0;
 }
-.onboarding-step > p {
+.tour-copy p {
+  margin: 0;
   color: var(--secondary);
-  margin: 0.45rem 0 1rem;
-  font-size: 0.92rem;
+  font-size: 0.94rem;
   line-height: 1.5;
 }
-.onboarding-simulator,
-.onboarding-privacy-card,
-.onboarding-setup-box,
-.ob-stage-card,
-.ob-island-stage {
-  background: var(--inset);
-  border: 1px solid var(--line);
-  border-radius: 1rem;
-  padding: 0.95rem;
-  margin-bottom: 1rem;
-}
-.sim-pass-preview {
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
+.onboarding-actions {
   justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  padding: 0.85rem 1rem;
-  border-radius: 0.85rem;
-  background: var(--ticket);
-  color: var(--ticket-ink);
-  margin-bottom: 0.85rem;
 }
-.sim-pass-preview small {
-  display: block;
-  font-size: 0.68rem;
-  letter-spacing: 0.06em;
-  color: var(--ticket-label);
+@media (max-width: 48rem) {
+  .onboarding-dialog {
+    width: min(100%, 34rem);
+  }
+  .onboarding-dialog .dialog-inner {
+    padding-bottom: max(1.15rem, env(safe-area-inset-bottom));
+  }
 }
-.sim-pass-preview strong {
-  display: inline-block;
-  font-size: 1.65rem;
-  font-variant-numeric: tabular-nums;
+@media (prefers-reduced-motion: no-preference) {
+  .tour-slide {
+    animation: tour-slide-in 260ms var(--ease-out) both;
+  }
+  .tour-value strong,
+  .tour-identity {
+    animation: tour-stamp-in 380ms var(--ease-out) both;
+  }
+  @keyframes tour-slide-in {
+    from {
+      opacity: 0;
+      transform: translateY(0.45rem);
+    }
+  }
+  @keyframes tour-stamp-in {
+    from {
+      opacity: 0;
+      transform: translateY(0.45rem) scale(0.96);
+    }
+  }
 }
-.sim-controls {
-  display: grid;
-  gap: 0.7rem;
-  margin-bottom: 0.85rem;
-  font-size: 0.87rem;
-}
-.onboarding-simulator > small {
-  display: block;
-  color: var(--secondary);
-}
-
-/* Paket-Split Mini-Demo in Schritt 1 */
 .ob-split-demo {
-  border-top: 1px solid var(--line);
-  padding-top: 0.8rem;
   display: grid;
   gap: 0.6rem;
 }
@@ -2400,182 +2537,34 @@ tr.voided td {
   font-variant-numeric: tabular-nums;
 }
 
-/* Schritt 5: Ready-Checkliste & Shortcuts */
-.ob-ready-list {
-  list-style: none;
-  margin: 0 0 0.85rem;
-  padding: 0.7rem 0 0;
-  border-top: 1px solid var(--line);
-  display: grid;
-  gap: 0.42rem;
-}
-.ob-ready-list li {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.84rem;
-  color: var(--ink);
-}
-.ob-ready-list li svg {
-  flex: none;
-  color: var(--positive);
-}
 .ob-final-shortcuts {
   display: grid;
   gap: 0.5rem;
   margin-bottom: 0.85rem;
 }
 
-.onboarding-privacy-card {
-  display: grid;
-  gap: 0.85rem;
-}
-.privacy-point {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.7rem;
-}
-.privacy-point svg {
-  flex: none;
-  margin-top: 0.15rem;
-  color: var(--tint);
-}
-.privacy-point strong {
-  display: block;
-  font-size: 0.92rem;
-}
-.privacy-point small {
-  display: block;
-  color: var(--secondary);
-  margin-top: 0.15rem;
-  line-height: 1.45;
-}
-.setup-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.65rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.85rem;
-}
-.setup-tip {
-  font-size: 0.85rem;
-  color: var(--secondary);
-  border-top: 1px solid var(--line);
-  padding-top: 0.75rem;
-}
-.onboarding-actions {
-  justify-content: space-between;
-}
-
-/* Onboarding Motion (nur wenn keine reduzierte Bewegung aktiv ist) */
 @media (prefers-reduced-motion: no-preference) {
-  .onboarding-step[data-dir="next"] {
-    animation: obSlideNext 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-  .onboarding-step[data-dir="prev"] {
-    animation: obSlidePrev 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-  .ob-icon-float {
-    animation: obIconPop 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-  .ob-number-pop {
-    animation: obNumberPop 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-  .ob-ticket-sheen::after {
-    content: "";
-    position: absolute;
-    inset: -30% auto -30% -50%;
-    width: 45%;
-    transform: skewX(-22deg);
-    background: linear-gradient(
-      90deg,
-      transparent,
-      rgba(255, 255, 255, 0.11),
-      transparent
-    );
-    pointer-events: none;
-    animation: obSheen 1.6s cubic-bezier(0.22, 1, 0.36, 1) 180ms 1 both;
-  }
   .ob-route-runner {
-    animation: obRouteGlide 2.5s ease-in-out infinite;
+    animation: obRouteGlide 2.5s ease-in-out 2;
   }
   .ob-avatar-dot {
     animation: obAvatarPop 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
   .ob-live-dot {
-    animation: obLivePulse 1.8s ease-out infinite;
+    animation: obLivePulse 1.8s ease-out 2;
   }
   .ob-island-pulsebar span {
-    animation: obPulseSlide 2.2s ease-in-out infinite;
+    animation: obPulseSlide 2.2s ease-in-out 2;
   }
   .ob-radar-ring.r1 {
-    animation: obRadarRing 2.4s ease-out infinite;
+    animation: obRadarRing 2.4s ease-out 2;
   }
   .ob-radar-ring.r2 {
-    animation: obRadarRing 2.4s ease-out 1.2s infinite;
+    animation: obRadarRing 2.4s ease-out 1.2s 2;
   }
-  .ob-ready-list li {
-    animation: obFadeUp 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-  .ob-ready-list li:nth-child(2) {
-    animation-delay: 70ms;
-  }
-  .ob-ready-list li:nth-child(3) {
-    animation-delay: 140ms;
-  }
-}
 
-@keyframes obSlideNext {
-  from {
-    opacity: 0;
-    transform: translateX(18px) scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0) scale(1);
-  }
-}
-@keyframes obSlidePrev {
-  from {
-    opacity: 0;
-    transform: translateX(-18px) scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0) scale(1);
-  }
-}
-@keyframes obIconPop {
-  0% {
-    opacity: 0;
-    transform: scale(0.84) translateY(4px);
-  }
-  65% {
-    opacity: 1;
-    transform: scale(1.04) translateY(-1px);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-@keyframes obNumberPop {
-  from {
-    opacity: 0.55;
-    transform: translateY(3px) scale(0.94);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-@keyframes obSheen {
-  from {
-    transform: translateX(0) skewX(-22deg);
-  }
-  to {
-    transform: translateX(390%) skewX(-22deg);
+  .ob-number-pop {
+    animation: tour-stamp-in 300ms var(--ease-out) both;
   }
 }
 @keyframes obRouteGlide {
@@ -2627,17 +2616,6 @@ tr.voided td {
     transform: scale(1.38);
   }
 }
-@keyframes obFadeUp {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 @media (max-width: 30rem) {
   .ob-split-legend {
     grid-template-columns: minmax(0, 1fr);
@@ -2656,6 +2634,15 @@ tr.voided td {
     gap: 0.35rem;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-ticket *,
+  .tour-ticket *::after {
+    transition: none;
+    animation: none;
+  }
+}
+
 .location-fieldset,
 .feedback-categories {
   min-width: 0;

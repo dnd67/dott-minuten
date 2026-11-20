@@ -11,16 +11,34 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
     friend = randomUUID(),
     outsider = randomUUID();
   await db.exec(`create role anon; create role authenticated; create schema auth;
-    create table auth.users(id uuid primary key);
+    create table auth.users(id uuid primary key, last_sign_in_at timestamptz);
     create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
     grant usage on schema auth to authenticated, anon;
     grant execute on function auth.uid() to authenticated, anon;`);
   for (const id of [owner, friend, outsider])
     await db.query("insert into auth.users values($1)", [id]);
+  const legacy = randomUUID(),
+    awaitingLogin = randomUUID();
   const migrationDir = new URL("../supabase/migrations/", import.meta.url);
   for (const file of (await readdir(migrationDir))
     .filter((f) => f.endsWith(".sql"))
     .sort()) {
+    if (file.endsWith("_onboarding_features.sql")) {
+      // The rollout happens after an old member has signed in and an invited account is provisioned.
+      await db.query("insert into auth.users values ($1, now()), ($2, null)", [
+        legacy,
+        awaitingLogin,
+      ]);
+      const group = randomUUID();
+      await db.query(
+        "insert into public.groups(id,name,created_by,request_id) values($1,'Alte Crew',$2,$3)",
+        [group, legacy, randomUUID()],
+      );
+      await db.query(
+        "insert into public.memberships(group_id,user_id,display_name) values($1,$2,'Aktiv'),($1,$3,'Eingeladen')",
+        [group, legacy, awaitingLogin],
+      );
+    }
     await db.exec(await readFile(new URL(file, migrationDir), "utf8"));
   }
   async function as<T = Record<string, unknown>>(
@@ -35,6 +53,34 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
     await db.exec("set role authenticated");
     return (await db.query<T>(sql, params)).rows;
   }
+  await t.test(
+    "Tour übernimmt nur alte Grundlagen und trennt Konten auch bei Wiederholungen",
+    async () => {
+      const select =
+        "select feature_id from public.onboarding_features order by feature_id";
+      assert.deepEqual(await as(legacy, select), [
+        { feature_id: "appearance" },
+        { feature_id: "minute-pass" },
+      ]);
+      assert.deepEqual(await as(awaitingLogin, select), []);
+      assert.deepEqual(await as(owner, select), []);
+      const ack =
+        "insert into public.onboarding_features values($1, 'package-splits') on conflict do nothing";
+      await as(owner, ack, [owner]);
+      await as(owner, ack, [owner]);
+      assert.deepEqual(await as(owner, select), [
+        { feature_id: "package-splits" },
+      ]);
+      assert.deepEqual(await as(friend, select), []);
+      await assert.rejects(
+        () => as(friend, ack, [outsider]),
+        /row-level security/,
+      );
+      await db.exec("reset role; set role anon");
+      await assert.rejects(() => db.query(select), /permission denied/);
+      await db.exec("reset role");
+    },
+  );
   const groupRequest = randomUUID();
   const [{ id: gid }] = await as<{ id: string }>(
     owner,

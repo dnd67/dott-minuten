@@ -20,10 +20,13 @@ Diese Schritte werden einmal für eure Crew erledigt. GitHub enthält den Code; 
 | [202611190004](../supabase/migrations/202611190004_username_auth_and_resets.sql) | Benutzerkonten und Passwortanfragen                      |
 | [202611190005](../supabase/migrations/202611190005_security_and_rate_limits.sql) | Einladungsprüfung, Widerruf und Anfragelimits            |
 | [202611190006](../supabase/migrations/202611190006_package_splits.sql)           | Gleichteilung und Minutenbedarf im vorhandenen Paket-RPC |
+| [202611190007](../supabase/migrations/202611190007_shared_rides.sql)             | Gemeinsame Fahrten                                       |
+| [202611190008](../supabase/migrations/202611190008_dev_telemetry_and_places.sql) | Fahrt-Telemetrie und Crew-Orte                           |
+| [20261120064455](../supabase/migrations/20261120064455_onboarding_features.sql)  | Persönlicher Tourfortschritt                             |
 
 ## Bestehende Installation aktualisieren
 
-Bei einem Projekt auf Stand `202611190005` genügt für die neue Aufteilung die letzte Migration. Spiele sie vor dem neuen Frontend ein. Sie erweitert die vorhandene Funktion, erhält den Aufruf bisheriger Clients und berechnet frühere Paketkäufe nicht neu. Für die lokale Demo entfällt der SQL-Schritt.
+Spiele die ausstehenden Migrationen in der angegebenen Reihenfolge vor dem zugehörigen Frontend ein. Die Tour-Migration markiert die bisherigen Grundlagen für Mitglieder mit früherer Anmeldung als bekannt. Konten vor ihrer ersten Anmeldung erhalten die vollständige Einführung. Für die lokale Demo entfällt der SQL-Schritt.
 
 Zum Aktualisieren eines lokalen Windows-Checkouts zuerst den Entwicklungsserver mit `Ctrl+C` stoppen, dann:
 
