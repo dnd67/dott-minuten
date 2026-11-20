@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import {
   allocateMinutes,
   groupSharedRides,
@@ -9,8 +11,12 @@ import {
   summary,
   wholeMinutes,
   type Action,
+  type FeedbackCategory,
+  type FeedbackItem,
+  type Member,
   type RpcArgs,
   type Snapshot,
+  type UserAccount,
 } from "../lib/domain";
 import {
   DEMO_USER,
@@ -31,6 +37,25 @@ import {
   computeLiveRideMetrics,
   formatElapsedClock,
 } from "../lib/live-activity";
+import {
+  FEEDBACK_CATEGORIES,
+  FEEDBACK_CATEGORY_LABELS,
+  FEEDBACK_SEEN_KEY_PREFIX,
+  computeFeedbackSeenCursor,
+  countUnreadFeedback,
+  feedbackSeenStorageKey,
+  filterFeedback,
+  isFeedbackUnread,
+  loadFeedbackSeenAt,
+  mergeFeedbackLists,
+  resolveFeedbackAuthor,
+  saveFeedbackSeenAt,
+  sortFeedbackNewest,
+  summarizeFeedback,
+} from "../lib/feedback";
+import { FeedbackInbox } from "../components/feedback-inbox";
+import { DevDashboard } from "../components/dev-dashboard";
+import { FeedbackDialog } from "../components/feedback-dialog";
 
 function adminDemoSnapshot(): Snapshot {
   const snap = demoSnapshot();
@@ -997,4 +1022,831 @@ test("normalizeDemoSnapshot wehrt JSON-Arrays, kaputte Array-Einträge, fehlerha
       (m) => m.user_id !== DEMO_USER && m.active && m.role === "admin",
     ),
   );
+});
+
+function makeFeedbackItem(
+  overrides: Partial<FeedbackItem> & { id: string },
+): FeedbackItem {
+  return {
+    group_id: "group-1",
+    member_id: "m-oskar",
+    category: "idea",
+    message: "Standard-Rückmeldung",
+    page: "Übersicht",
+    created_at: "2026-11-20T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function makeFeedbackMembersAndAccounts(): {
+  members: Member[];
+  accounts: UserAccount[];
+  me: Member;
+} {
+  const me: Member = {
+    id: "m-august",
+    group_id: "group-1",
+    user_id: "u-august",
+    display_name: "August Admin",
+    role: "admin",
+    active: true,
+  };
+  const members: Member[] = [
+    me,
+    {
+      id: "m-oskar",
+      group_id: "group-1",
+      user_id: "u-oskar",
+      display_name: "Oskar",
+      role: "member",
+      active: true,
+    },
+    {
+      id: "m-max",
+      group_id: "group-1",
+      user_id: "u-max",
+      display_name: "Max",
+      role: "member",
+      active: true,
+    },
+    {
+      id: "m-lena",
+      group_id: "group-1",
+      user_id: "u-lena",
+      display_name: "Lena Ex",
+      role: "member",
+      active: false,
+    },
+    {
+      id: "m-no-account",
+      group_id: "group-1",
+      user_id: "u-no-account",
+      display_name: "Noa OhneKonto",
+      role: "member",
+      active: true,
+    },
+  ];
+  const accounts: UserAccount[] = [
+    {
+      user_id: "u-august",
+      username: "august",
+      password_updated_at: "2026-11-18T10:00:00.000Z",
+    },
+    {
+      user_id: "u-oskar",
+      username: "oskar",
+      password_updated_at: "2026-11-18T10:00:00.000Z",
+    },
+    {
+      user_id: "u-max",
+      username: "max_zh",
+      password_updated_at: "2026-11-18T10:00:00.000Z",
+    },
+    {
+      user_id: "u-lena",
+      username: "lena_old",
+      password_updated_at: "2026-11-18T10:00:00.000Z",
+    },
+  ];
+  return { members, accounts, me };
+}
+
+test("lib/feedback: sortFeedbackNewest und mergeFeedbackLists sortieren deterministisch, deduplizieren und behandeln ungültige Daten sicher", () => {
+  const input: FeedbackItem[] = [
+    makeFeedbackItem({
+      id: "fb-invalid-b",
+      created_at: "kein-datum",
+    }),
+    makeFeedbackItem({
+      id: "fb-older",
+      created_at: "2026-11-20T08:00:00.000Z",
+    }),
+    makeFeedbackItem({
+      id: "fb-tie-b",
+      created_at: "2026-11-20T10:00:00.000Z",
+    }),
+    makeFeedbackItem({
+      id: "fb-tie-a",
+      created_at: "2026-11-20T11:00:00+01:00", // exakt 10:00:00Z
+    }),
+    makeFeedbackItem({
+      id: "fb-newest",
+      created_at: "2026-11-20T12:30:00.000Z",
+    }),
+    makeFeedbackItem({
+      id: "fb-invalid-a",
+      created_at: "",
+    }),
+  ];
+  const snapshotOrder = input.map((i) => i.id);
+  const sorted = sortFeedbackNewest(input);
+
+  // Eingabe-Array bleibt unverändert:
+  assert.deepEqual(
+    input.map((i) => i.id),
+    snapshotOrder,
+  );
+  // Neueste zuerst, deterministischer id-Tie-Break, ungültige Daten sicher am Ende:
+  assert.deepEqual(
+    sorted.map((i) => i.id),
+    [
+      "fb-newest",
+      "fb-tie-a",
+      "fb-tie-b",
+      "fb-older",
+      "fb-invalid-a",
+      "fb-invalid-b",
+    ],
+  );
+
+  // mergeFeedbackLists dedupliziert nach id (erster Eintrag gewinnt), ignoriert leere id und sortiert neueste zuerst:
+  const listA: FeedbackItem[] = [
+    makeFeedbackItem({
+      id: "fb-1",
+      message: "Remote-Version",
+      created_at: "2026-11-20T09:00:00.000Z",
+    }),
+    makeFeedbackItem({
+      id: "",
+      message: "Ungültige leere ID",
+      created_at: "2026-11-20T15:00:00.000Z",
+    }),
+  ];
+  const listB: FeedbackItem[] = [
+    makeFeedbackItem({
+      id: "fb-1",
+      message: "Lokales Duplikat",
+      created_at: "2026-11-20T14:00:00.000Z",
+    }),
+    makeFeedbackItem({
+      id: "fb-2",
+      message: "Neuerer Eintrag",
+      created_at: "2026-11-20T11:00:00.000Z",
+    }),
+    makeFeedbackItem({
+      id: "fb-2",
+      message: "Zweites Duplikat",
+      created_at: "2026-11-20T12:00:00.000Z",
+    }),
+  ];
+  const merged = mergeFeedbackLists(listA, listB);
+  assert.deepEqual(
+    merged.map((i) => [i.id, i.message]),
+    [
+      ["fb-2", "Neuerer Eintrag"],
+      ["fb-1", "Remote-Version"],
+    ],
+  );
+});
+
+test("lib/feedback: resolveFeedbackAuthor löst aktive, deaktivierte und verwaiste Mitglieder ohne Fehlzuordnung zu me auf", () => {
+  const { members, accounts, me } = makeFeedbackMembersAndAccounts();
+
+  const activeWithHandle = resolveFeedbackAuthor(
+    { member_id: "m-max" },
+    members,
+    accounts,
+  );
+  assert.equal(activeWithHandle.displayName, "Max");
+  assert.equal(activeWithHandle.username, "max_zh");
+  assert.equal(activeWithHandle.active, true);
+  assert.equal(activeWithHandle.member?.id, "m-max");
+
+  const activeWithoutHandle = resolveFeedbackAuthor(
+    { member_id: "m-no-account" },
+    members,
+    accounts,
+  );
+  assert.equal(activeWithoutHandle.displayName, "Noa OhneKonto");
+  assert.equal(activeWithoutHandle.username, null);
+  assert.equal(activeWithoutHandle.active, true);
+  assert.equal(activeWithoutHandle.member?.id, "m-no-account");
+
+  const deactivated = resolveFeedbackAuthor(
+    { member_id: "m-lena" },
+    members,
+    accounts,
+  );
+  assert.equal(deactivated.displayName, "Lena Ex");
+  assert.equal(deactivated.username, "lena_old");
+  assert.equal(deactivated.active, false);
+  assert.equal(deactivated.member?.id, "m-lena");
+
+  // Verwaiste / unbekannte member_id fällt sauber auf "Mitglied" zurück — NIEMALS auf me:
+  const orphaned = resolveFeedbackAuthor(
+    { member_id: "m-deleted-orphan" },
+    members,
+    accounts,
+  );
+  assert.deepEqual(orphaned, {
+    displayName: "Mitglied",
+    username: null,
+    active: false,
+    member: null,
+  });
+  assert.notEqual(orphaned.displayName, me.display_name);
+});
+
+test("lib/feedback: summarizeFeedback und filterFeedback zählen Kategorien und filtern nach Kategorie, Mitglied und Suchbegriff", () => {
+  assert.deepEqual(FEEDBACK_CATEGORIES, ["idea", "bug", "praise", "other"]);
+  assert.deepEqual(FEEDBACK_CATEGORY_LABELS, {
+    idea: "Idee",
+    bug: "Problem",
+    praise: "Lob",
+    other: "Allgemein",
+  });
+
+  assert.deepEqual(summarizeFeedback([]), {
+    total: 0,
+    idea: 0,
+    bug: 0,
+    praise: 0,
+    other: 0,
+  });
+
+  const { members, accounts } = makeFeedbackMembersAndAccounts();
+  const items: FeedbackItem[] = [
+    makeFeedbackItem({
+      id: "fb-1",
+      member_id: "m-oskar",
+      category: "idea",
+      message: "Favoriten-Knopf beim Entsperren",
+      page: "Übersicht",
+      created_at: "2026-11-20T08:00:00.000Z",
+    }),
+    makeFeedbackItem({
+      id: "fb-2",
+      member_id: "m-max",
+      category: "bug",
+      message: "GPS-Button hängt manchmal",
+      page: "Fahrten",
+      created_at: "2026-11-20T09:00:00.000Z",
+    }),
+    makeFeedbackItem({
+      id: "fb-3",
+      member_id: "m-lena",
+      category: "praise",
+      message: "Super Übersicht fürs Guthaben",
+      page: "Guthaben",
+      created_at: "2026-11-20T10:00:00.000Z",
+    }),
+    makeFeedbackItem({
+      id: "fb-4",
+      member_id: "m-orphan",
+      category: "other",
+      message: "Kurze Frage zum Export",
+      page: "Statistik",
+      created_at: "2026-11-20T11:00:00.000Z",
+    }),
+    makeFeedbackItem({
+      id: "fb-5",
+      member_id: "m-max",
+      category: "idea",
+      message: "Nachtmodus automatisch umschalten",
+      page: "Mitglieder",
+      created_at: "2026-11-20T12:00:00.000Z",
+    }),
+  ];
+
+  assert.deepEqual(summarizeFeedback(items), {
+    total: 5,
+    idea: 2,
+    bug: 1,
+    praise: 1,
+    other: 1,
+  });
+
+  // Standard ohne Filter -> alle, neueste zuerst:
+  assert.deepEqual(
+    filterFeedback(items, members, accounts).map((i) => i.id),
+    ["fb-5", "fb-4", "fb-3", "fb-2", "fb-1"],
+  );
+
+  // Kategorie-Filter:
+  assert.deepEqual(
+    filterFeedback(items, members, accounts, { category: "idea" }).map(
+      (i) => i.id,
+    ),
+    ["fb-5", "fb-1"],
+  );
+  assert.deepEqual(
+    filterFeedback(items, members, accounts, { category: "bug" }).map(
+      (i) => i.id,
+    ),
+    ["fb-2"],
+  );
+
+  // Mitglied-Filter (inkl. verwaister ID):
+  assert.deepEqual(
+    filterFeedback(items, members, accounts, { memberId: "m-max" }).map(
+      (i) => i.id,
+    ),
+    ["fb-5", "fb-2"],
+  );
+  assert.deepEqual(
+    filterFeedback(items, members, accounts, { memberId: "m-orphan" }).map(
+      (i) => i.id,
+    ),
+    ["fb-4"],
+  );
+
+  // Case-insensitive Query über message, page, displayName, username und @username:
+  assert.deepEqual(
+    filterFeedback(items, members, accounts, { query: "  ENTSPerren  " }).map(
+      (i) => i.id,
+    ),
+    ["fb-1"],
+  );
+  assert.deepEqual(
+    filterFeedback(items, members, accounts, { query: "statistik" }).map(
+      (i) => i.id,
+    ),
+    ["fb-4"],
+  );
+  assert.deepEqual(
+    filterFeedback(items, members, accounts, { query: "LENA EX" }).map(
+      (i) => i.id,
+    ),
+    ["fb-3"],
+  );
+  assert.deepEqual(
+    filterFeedback(items, members, accounts, { query: "MAX_ZH" }).map(
+      (i) => i.id,
+    ),
+    ["fb-5", "fb-2"],
+  );
+  assert.deepEqual(
+    filterFeedback(items, members, accounts, { query: "@oskar" }).map(
+      (i) => i.id,
+    ),
+    ["fb-1"],
+  );
+  assert.deepEqual(
+    filterFeedback(items, members, accounts, { query: "mitglied" }).map(
+      (i) => i.id,
+    ),
+    ["fb-5", "fb-4"],
+  );
+  assert.deepEqual(
+    filterFeedback(items, members, accounts, {
+      category: "other",
+      query: "mitglied",
+    }).map((i) => i.id),
+    ["fb-4"],
+  );
+
+  // Kombinierte Filter:
+  assert.deepEqual(
+    filterFeedback(items, members, accounts, {
+      category: "bug",
+      memberId: "m-max",
+      query: "@max_zh",
+    }).map((i) => i.id),
+    ["fb-2"],
+  );
+  assert.deepEqual(
+    filterFeedback(items, members, accounts, {
+      category: "praise",
+      memberId: "m-max",
+      query: "gps",
+    }),
+    [],
+  );
+});
+
+test("lib/feedback: Seen-Cursor (inkl. Clock-Skew), Ungelesen-Logik und SSR-sichere Storage-Helfer", () => {
+  assert.equal(
+    feedbackSeenStorageKey("grp-42"),
+    `${FEEDBACK_SEEN_KEY_PREFIX}grp-42`,
+  );
+
+  const ownItem = makeFeedbackItem({
+    id: "fb-own",
+    member_id: "m-august",
+    created_at: "2026-11-20T12:00:00.000Z",
+  });
+  const oldOther = makeFeedbackItem({
+    id: "fb-old-other",
+    member_id: "m-oskar",
+    created_at: "2026-11-20T09:00:00.000Z",
+  });
+  const exactSeenOther = makeFeedbackItem({
+    id: "fb-exact-other",
+    member_id: "m-max",
+    created_at: "2026-11-20T10:00:00.000Z",
+  });
+  const newOther = makeFeedbackItem({
+    id: "fb-new-other",
+    member_id: "m-max",
+    created_at: "2026-11-20T10:30:00.000Z",
+  });
+  const futureClockSkewOther = makeFeedbackItem({
+    id: "fb-skew-other",
+    member_id: "m-oskar",
+    created_at: "2026-11-20T11:05:00.000Z",
+  });
+  const invalidDateOther = makeFeedbackItem({
+    id: "fb-bad-date",
+    member_id: "m-oskar",
+    created_at: "invalid",
+  });
+
+  // computeFeedbackSeenCursor: ohne Skew gewinnt `now`, bei Server-Clock-Skew gewinnt neuestes `created_at`:
+  const nowNormal = new Date("2026-11-20T13:00:00.000Z");
+  assert.equal(
+    computeFeedbackSeenCursor([oldOther, newOther], nowNormal),
+    "2026-11-20T13:00:00.000Z",
+  );
+  assert.equal(
+    computeFeedbackSeenCursor([], nowNormal),
+    "2026-11-20T13:00:00.000Z",
+  );
+
+  const nowBehindServer = new Date("2026-11-20T10:45:00.000Z");
+  const skewCursor = computeFeedbackSeenCursor(
+    [oldOther, futureClockSkewOther, invalidDateOther],
+    nowBehindServer,
+  );
+  assert.equal(skewCursor, "2026-11-20T11:05:00.000Z");
+
+  // Eigene Einträge sind NIEMALS ungelesen (auch nicht bei seenAt = null):
+  assert.equal(isFeedbackUnread(ownItem, "m-august", null), false);
+  assert.equal(
+    isFeedbackUnread(ownItem, "m-august", "2026-11-20T08:00:00.000Z"),
+    false,
+  );
+
+  // Fremde Einträge sind ungelesen bei seenAt = null oder neuer als seenAt:
+  assert.equal(isFeedbackUnread(oldOther, "m-august", null), true);
+  assert.equal(isFeedbackUnread(oldOther, "m-august", "not-a-date"), true);
+  assert.equal(
+    isFeedbackUnread(oldOther, "m-august", "2026-11-20T10:00:00.000Z"),
+    false,
+  );
+  assert.equal(
+    isFeedbackUnread(exactSeenOther, "m-august", "2026-11-20T10:00:00.000Z"),
+    false,
+  );
+  assert.equal(
+    isFeedbackUnread(newOther, "m-august", "2026-11-20T10:00:00.000Z"),
+    true,
+  );
+  assert.equal(
+    isFeedbackUnread(invalidDateOther, "m-august", "2026-11-20T10:00:00.000Z"),
+    false,
+  );
+
+  const allItems = [
+    ownItem,
+    oldOther,
+    exactSeenOther,
+    newOther,
+    futureClockSkewOther,
+  ];
+  assert.equal(countUnreadFeedback(allItems, "m-august", null), 4);
+  assert.equal(
+    countUnreadFeedback(allItems, "m-august", "2026-11-20T10:00:00.000Z"),
+    2,
+  );
+  // Nach Markieren mit Clock-Skew-Cursor ist der Zähler exakt 0:
+  const cursorAll = computeFeedbackSeenCursor(allItems, nowBehindServer);
+  assert.equal(countUnreadFeedback(allItems, "m-august", cursorAll), 0);
+
+  // SSR-Sicherheit: ohne window werfen loadFeedbackSeenAt / saveFeedbackSeenAt nicht:
+  assert.equal(typeof window, "undefined");
+  assert.equal(loadFeedbackSeenAt("grp-42"), null);
+  assert.doesNotThrow(() =>
+    saveFeedbackSeenAt("grp-42", "2026-11-20T12:00:00.000Z"),
+  );
+
+  // Mit Browser-localStorage funktioniert Speichern & Laden (ungültige ISO wird ignoriert):
+  const store = new Map<string, string>();
+  const globalRecord = globalThis as Record<string, unknown>;
+  const hadWindow = "window" in globalRecord;
+  const prevWindow = globalRecord.window;
+  globalRecord.window = {
+    localStorage: {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        store.set(k, v);
+      },
+    },
+  };
+  try {
+    assert.equal(loadFeedbackSeenAt("grp-42"), null);
+    saveFeedbackSeenAt("grp-42", "ungueltig");
+    assert.equal(loadFeedbackSeenAt("grp-42"), null);
+    saveFeedbackSeenAt("grp-42", "2026-11-20T11:05:00.000Z");
+    assert.equal(loadFeedbackSeenAt("grp-42"), "2026-11-20T11:05:00.000Z");
+    assert.equal(loadFeedbackSeenAt(""), null);
+  } finally {
+    if (hadWindow) {
+      globalRecord.window = prevWindow;
+    } else {
+      delete globalRecord.window;
+    }
+  }
+});
+
+test("SSR FeedbackInbox & DevDashboard: Admin sieht alle Einträge (>8) auch ohne NEXT_PUBLIC_FEEDBACK_ENABLED; Demo und Mitglieder rendern leer", () => {
+  const { members, accounts, me } = makeFeedbackMembersAndAccounts();
+  const categories: FeedbackCategory[] = ["idea", "bug", "praise", "other"];
+  const pages = ["Übersicht", "Fahrten", "Guthaben", "Statistik", "Mitglieder"];
+  const authorCycle = [
+    "m-oskar",
+    "m-max",
+    "m-lena", // deaktiviert
+    "m-orphaned-99", // fehlt in members -> "Mitglied"
+    "m-august", // eigener Admin-Eintrag -> nie ungelesen
+  ];
+
+  // 10 Einträge (> 8) über alle Kategorien und Autoren:
+  const tenItems: FeedbackItem[] = Array.from({ length: 10 }, (_, idx) => {
+    const num = String(idx + 1).padStart(2, "0");
+    return makeFeedbackItem({
+      id: `fb-ssr-${num}`,
+      member_id: authorCycle[idx % authorCycle.length],
+      category: categories[idx % categories.length],
+      message: `Crew-Feedback-Eintrag-${num}`,
+      page: pages[idx % pages.length],
+      // idx 0..9 -> 09:00 .. 18:00Z
+      created_at: `2026-11-20T${String(9 + idx).padStart(2, "0")}:00:00.000Z`,
+    });
+  });
+
+  // seenAt = 14:00Z -> neuer als 14:00Z sind idx 6 (15:00, m-max), idx 7 (16:00, m-lena),
+  // idx 8 (17:00, m-orphaned-99) und idx 9 (18:00, m-august = eigener Eintrag -> NICHT ungelesen).
+  // Erwartet exakt 3 ungelesene Einträge.
+  const seenAt = "2026-11-20T14:00:00.000Z";
+  assert.equal(countUnreadFeedback(tenItems, me.id, seenAt), 3);
+
+  const snap: Snapshot = {
+    ...demoSnapshot(),
+    group: { id: "group-1", name: "Zürich Crew" },
+    members,
+    accounts,
+    feedback: tenItems,
+  };
+
+  const prevFlag = process.env.NEXT_PUBLIC_FEEDBACK_ENABLED;
+  delete process.env.NEXT_PUBLIC_FEEDBACK_ENABLED;
+  try {
+    // 1. FeedbackInbox mit admin=true, demo=false (ohne NEXT_PUBLIC_FEEDBACK_ENABLED):
+    const inboxHtml = renderToStaticMarkup(
+      React.createElement(FeedbackInbox, {
+        feedback: tenItems,
+        members,
+        accounts,
+        me,
+        admin: true,
+        demo: false,
+        seenAt,
+        onMarkSeen: () => {},
+      }),
+    );
+
+    assert.match(inboxHtml, /Nutzer-Feedback der Crew/);
+    assert.match(inboxHtml, /class="[^"]*feedback-inbox-env-hint[^"]*"/);
+    assert.match(inboxHtml, /NEXT_PUBLIC_FEEDBACK_ENABLED=true/);
+
+    // Keine .slice(0, 8)-Abschneidung: alle 10 Einträge und 10 Karten sind gerendert:
+    const cards =
+      inboxHtml.match(
+        /<article class="feedback-inbox-card[\s\S]*?<\/article>/g,
+      ) ?? [];
+    assert.equal(cards.length, 10);
+    for (let i = 1; i <= 10; i++) {
+      const token = `Crew-Feedback-Eintrag-${String(i).padStart(2, "0")}`;
+      assert.ok(inboxHtml.includes(token), `Fehlender Eintrag: ${token}`);
+    }
+
+    // Autoren-Handles, Deaktiviert-Kennzeichnung & kein Fehl-Fallback auf me für verwaiste Einträge:
+    assert.ok(inboxHtml.includes("@oskar"));
+    assert.ok(inboxHtml.includes("@max_zh"));
+    assert.ok(inboxHtml.includes("@lena_old"));
+    assert.ok(inboxHtml.includes("Lena Ex (Deaktiviert)"));
+    assert.ok(inboxHtml.includes("Mitglied (Deaktiviert)"));
+    assert.ok(
+      inboxHtml.includes('<span class="pill muted">Deaktiviert</span>'),
+    );
+
+    const orphanCard = cards.find((card) =>
+      card.includes("Crew-Feedback-Eintrag-09"),
+    );
+    assert.ok(orphanCard);
+    assert.ok(orphanCard.includes("<strong>Mitglied</strong>"));
+    assert.ok(
+      orphanCard.includes('<span class="pill muted">Deaktiviert</span>'),
+    );
+    assert.equal(orphanCard.includes(me.display_name), false);
+
+    // Eigener neuer Eintrag (idx 9 = Eintrag-10) ist NICHT als unread markiert:
+    const ownCard = cards.find((card) =>
+      card.includes("Crew-Feedback-Eintrag-10"),
+    );
+    assert.ok(ownCard);
+    assert.equal(
+      ownCard.startsWith('<article class="feedback-inbox-card unread"'),
+      false,
+    );
+
+    // Semantische Kategorie-Badges, Seiten-Pills, Ungelesen-Pills & Mark-Read-Button:
+    assert.ok(inboxHtml.includes("feedback-cat-badge cat-idea"));
+    assert.ok(inboxHtml.includes("feedback-cat-badge cat-bug"));
+    assert.ok(inboxHtml.includes("feedback-cat-badge cat-praise"));
+    assert.ok(inboxHtml.includes("feedback-cat-badge cat-other"));
+    assert.ok(inboxHtml.includes("Idee"));
+    assert.ok(inboxHtml.includes("Problem"));
+    assert.ok(inboxHtml.includes("Lob"));
+    assert.ok(inboxHtml.includes("Allgemein"));
+    assert.ok(inboxHtml.includes("feedback-page-pill"));
+    assert.ok(inboxHtml.includes("Übersicht"));
+    assert.ok(inboxHtml.includes("Statistik"));
+    assert.ok(inboxHtml.includes("3 neu"));
+    assert.equal(
+      cards.filter((card) =>
+        card.startsWith('<article class="feedback-inbox-card unread"'),
+      ).length,
+      3,
+    );
+    assert.ok(
+      inboxHtml.includes('<span class="feedback-unread-pill">Neu</span>'),
+    );
+    assert.ok(inboxHtml.includes("Als gelesen markieren"));
+
+    // 2. DevDashboard mit admin=true, demo=false enthält 4. Kennzahlkarte + alle 10 Feedback-Einträge:
+    const devHtml = renderToStaticMarkup(
+      React.createElement(DevDashboard, {
+        data: snap,
+        me,
+        admin: true,
+        demo: false,
+        busy: false,
+        feedbackSeenAt: seenAt,
+        onMarkFeedbackSeen: () => {},
+        mutate: async () => true,
+        renderAvatar: () => null,
+      }),
+    );
+    assert.ok(devHtml.includes("Nutzer-Feedback"));
+    assert.ok(devHtml.includes("Nutzer-Feedback der Crew"));
+    assert.ok(devHtml.includes("3 Ideen · 3 Probleme · 2 Lob · 3 neu"));
+    assert.ok(devHtml.includes("feedback-inbox-env-hint"));
+    assert.equal(
+      devHtml.match(/<article class="feedback-inbox-card/g)?.length,
+      10,
+    );
+    assert.ok(devHtml.includes("Crew-Feedback-Eintrag-01"));
+    assert.ok(devHtml.includes("Crew-Feedback-Eintrag-10"));
+
+    // 3. Wenn NEXT_PUBLIC_FEEDBACK_ENABLED="true", verschwindet der Env-Hinweis:
+    process.env.NEXT_PUBLIC_FEEDBACK_ENABLED = "true";
+    const liveInboxHtml = renderToStaticMarkup(
+      React.createElement(FeedbackInbox, {
+        feedback: tenItems,
+        members,
+        accounts,
+        me,
+        admin: true,
+        demo: false,
+        seenAt,
+      }),
+    );
+    assert.equal(liveInboxHtml.includes("feedback-inbox-env-hint"), false);
+    assert.equal(
+      liveInboxHtml.match(/<article class="feedback-inbox-card/g)?.length,
+      10,
+    );
+
+    // 4. Harte Guards: demo=true (selbst mit admin=true!) oder admin=false rendern exakt "":
+    for (const guardProps of [
+      { admin: true, demo: true },
+      { admin: false, demo: false },
+      { admin: false, demo: true },
+    ]) {
+      assert.equal(
+        renderToStaticMarkup(
+          React.createElement(FeedbackInbox, {
+            feedback: tenItems,
+            members,
+            accounts,
+            me,
+            ...guardProps,
+          }),
+        ),
+        "",
+      );
+      assert.equal(
+        renderToStaticMarkup(
+          React.createElement(DevDashboard, {
+            data: snap,
+            me,
+            ...guardProps,
+            busy: false,
+            mutate: async () => true,
+            renderAvatar: () => null,
+          }),
+        ),
+        "",
+      );
+    }
+  } finally {
+    if (prevFlag === undefined) {
+      delete process.env.NEXT_PUBLIC_FEEDBACK_ENABLED;
+    } else {
+      process.env.NEXT_PUBLIC_FEEDBACK_ENABLED = prevFlag;
+    }
+  }
+});
+
+test("SSR FeedbackDialog: Admin-Shortcut und Crew-Überschrift nur bei admin=true && demo=false; remoteFeedback bleibt auch ohne Env-Flag sichtbar", () => {
+  const { members, me } = makeFeedbackMembersAndAccounts();
+  const remoteFeedback: FeedbackItem[] = [
+    makeFeedbackItem({
+      id: "fb-remote-1",
+      member_id: "m-max",
+      category: "bug",
+      message: "Remote-Bugmeldung aus Supabase",
+      page: "Fahrten",
+      created_at: "2026-11-20T11:00:00.000Z",
+    }),
+    makeFeedbackItem({
+      id: "fb-remote-orphan",
+      member_id: "m-deleted-user",
+      category: "idea",
+      message: "Idee eines gelöschten Mitglieds",
+      page: "Übersicht",
+      created_at: "2026-11-20T10:00:00.000Z",
+    }),
+  ];
+
+  const baseProps = {
+    motion: false,
+    currentPage: "Übersicht",
+    me,
+    members,
+    remoteFeedback,
+    busy: false,
+    remoteError: "",
+    onSave: async () => true,
+    onOpenAdminFeedback: () => {},
+    onClose: () => {},
+  };
+
+  const prevFlag = process.env.NEXT_PUBLIC_FEEDBACK_ENABLED;
+  delete process.env.NEXT_PUBLIC_FEEDBACK_ENABLED;
+  try {
+    // 1. Admin + nicht Demo, sogar ohne NEXT_PUBLIC_FEEDBACK_ENABLED:
+    const adminHtml = renderToStaticMarkup(
+      React.createElement(FeedbackDialog, {
+        ...baseProps,
+        admin: true,
+        demo: false,
+      }),
+    );
+    assert.ok(adminHtml.includes("Alle im Dev-Dashboard ansehen"));
+    assert.ok(adminHtml.includes("feedback-admin-bar"));
+    assert.ok(adminHtml.includes("Rückmeldungen der Crew (2)"));
+    assert.equal(adminHtml.includes("Deine bisherigen Rückmeldungen"), false);
+    assert.ok(adminHtml.includes("Vorbereitet für Launch"));
+    // Persistiertes remoteFeedback bleibt trotz fehlendem Live-Flag sichtbar:
+    assert.ok(adminHtml.includes("Remote-Bugmeldung aus Supabase"));
+    assert.ok(adminHtml.includes("Idee eines gelöschten Mitglieds"));
+    // Verwaistes Mitglied wird als "Mitglied" angezeigt und NICHT fälschlich als me.display_name:
+    const dialogItems =
+      adminHtml.match(/<div class="feedback-item">[\s\S]*?<\/p><\/div>/g) ?? [];
+    assert.equal(dialogItems.length, 2);
+    const orphanDialogItem = dialogItems.find((block) =>
+      block.includes("Idee eines gelöschten Mitglieds"),
+    );
+    assert.ok(orphanDialogItem);
+    assert.ok(orphanDialogItem.includes("Mitglied"));
+    assert.equal(orphanDialogItem.includes(me.display_name), false);
+
+    // 2. Demo=true (selbst mit admin=true und onOpenAdminFeedback) ODER admin=false:
+    for (const nonAdminProps of [
+      { admin: true, demo: true },
+      { admin: false, demo: false },
+      { admin: false, demo: true },
+    ]) {
+      const html = renderToStaticMarkup(
+        React.createElement(FeedbackDialog, {
+          ...baseProps,
+          ...nonAdminProps,
+        }),
+      );
+      assert.ok(html.includes("Deine bisherigen Rückmeldungen (2)"));
+      assert.equal(html.includes("Alle im Dev-Dashboard ansehen"), false);
+      assert.equal(html.includes("Rückmeldungen der Crew"), false);
+      assert.equal(html.includes("feedback-admin-bar"), false);
+      // Auch für normale Mitglieder bleibt remoteFeedback ohne Live-Flag sichtbar:
+      assert.ok(html.includes("Remote-Bugmeldung aus Supabase"));
+    }
+  } finally {
+    if (prevFlag === undefined) {
+      delete process.env.NEXT_PUBLIC_FEEDBACK_ENABLED;
+    } else {
+      process.env.NEXT_PUBLIC_FEEDBACK_ENABLED = prevFlag;
+    }
+  }
 });

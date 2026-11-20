@@ -29,7 +29,10 @@ async function assertNoGlobalAdminOrDevChrome(page: Page, mode: NavMode) {
     page.getByRole("button", { name: "Dev-Dashboard öffnen" }),
   ).toHaveCount(0);
   await expect(page.locator(".dev-topbar-btn")).toHaveCount(0);
+  await expect(page.locator(".dev-topbar-badge")).toHaveCount(0);
   await expect(page.locator(".nav-badge")).toHaveCount(0);
+  await expect(page.locator(".feedback-inbox-panel")).toHaveCount(0);
+  await expect(page.getByText("Nutzer-Feedback der Crew")).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Fahrt-Telemetrie & GPS-Inspektor" }),
   ).toHaveCount(0);
@@ -399,6 +402,36 @@ test("Demo (Legacy/Tampered localStorage): Admin-Rolle und Reset-Anfragen werden
   expect(persisted.feedback?.map((f) => f.id)).toEqual(["legacy-fb-own"]);
   expect(persisted.rides.some((r) => r.id === "legacy-own-ride")).toBe(true);
 
+  // Auch im Feedback-Dialog erscheinen im Demo-Modus weder Admin-Shortcut noch fremdes Feedback:
+  await page
+    .locator(".sidebar")
+    .getByRole("button", { name: "Feedback", exact: true })
+    .click();
+  const feedbackDialog = page.getByRole("dialog");
+  await expect(feedbackDialog).toBeVisible();
+  await expect(
+    feedbackDialog.getByText("Alle im Dev-Dashboard ansehen"),
+  ).toHaveCount(0);
+  await expect(feedbackDialog.getByText("Rückmeldungen der Crew")).toHaveCount(
+    0,
+  );
+  await expect(feedbackDialog.locator(".feedback-admin-bar")).toHaveCount(0);
+  await expect(
+    feedbackDialog.getByText("Deine bisherigen Rückmeldungen (1)"),
+  ).toBeVisible();
+  await feedbackDialog.getByText("Deine bisherigen Rückmeldungen (1)").click();
+  await expect(
+    feedbackDialog.getByText("Eigenes Feedback bleibt"),
+  ).toBeVisible();
+  await expect(
+    feedbackDialog.getByText("Fremdes Feedback wird entfernt"),
+  ).toHaveCount(0);
+  await feedbackDialog
+    .getByRole("button", { name: "Abbrechen", exact: true })
+    .click();
+  await expect(page.locator("dialog")).toHaveCount(0);
+  await assertNoGlobalAdminOrDevChrome(page, "desktop");
+
   // Auch nach Reload bleibt der bereinigte Zustand ohne Admin-/Dev-Rechte bestehen
   await page.reload();
   await expect(page.getByRole("heading", { name: "Hoi Oskar" })).toBeVisible();
@@ -618,15 +651,50 @@ test("Onboarding, Hell/Dunkel-Modus, Feedback-Vorschau, eigenes Passwort und Dot
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
 
-  // 4. Feedback-Fenster (Vorschau für späteren Launch) prüfen
+  // 4. Feedback-Fenster (Vorschau für späteren Launch) prüfen – ohne Admin-Verknüpfung oder Crew-Ansicht
   await page.getByRole("button", { name: "Feedback geben" }).click();
-  await expect(page.getByText("Vorbereitet für Launch")).toBeVisible();
-  await page.getByLabel(/Deine Nachricht/).fill("Super schnelle Entsperrung!");
-  await page.getByRole("button", { name: "Feedback senden" }).click();
+  const feedbackDialog = page.getByRole("dialog");
+  await expect(feedbackDialog).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Danke für deine Rückmeldung!" }),
+    feedbackDialog.getByText("Vorbereitet für Launch"),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Fertig" }).click();
+  await expect(
+    feedbackDialog.getByText("Alle im Dev-Dashboard ansehen"),
+  ).toHaveCount(0);
+  await expect(feedbackDialog.getByText("Rückmeldungen der Crew")).toHaveCount(
+    0,
+  );
+  await expect(feedbackDialog.locator(".feedback-admin-bar")).toHaveCount(0);
+  await feedbackDialog
+    .getByLabel(/Deine Nachricht/)
+    .fill("Super schnelle Entsperrung!");
+  await feedbackDialog.getByRole("button", { name: "Feedback senden" }).click();
+  await expect(
+    feedbackDialog.getByRole("heading", {
+      name: "Danke für deine Rückmeldung!",
+    }),
+  ).toBeVisible();
+  await expect(
+    feedbackDialog.getByText("Deine bisherigen Rückmeldungen (1)"),
+  ).toBeVisible();
+  await expect(
+    feedbackDialog.getByText("Alle im Dev-Dashboard ansehen"),
+  ).toHaveCount(0);
+  await expect(feedbackDialog.getByText("Rückmeldungen der Crew")).toHaveCount(
+    0,
+  );
+  await feedbackDialog.getByText("Deine bisherigen Rückmeldungen (1)").click();
+  await expect(
+    feedbackDialog
+      .locator(".feedback-list")
+      .getByText("Super schnelle Entsperrung!"),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+  await feedbackDialog.getByRole("button", { name: "Fertig" }).click();
+  await expect(page.locator("dialog")).toHaveCount(0);
+  await assertNoGlobalAdminOrDevChrome(page, "mobile");
 
   // 5. Passwort-Dashboard für normale Mitglieder (@oskar) auf iPhone-Breite prüfen
   await switchTab(page, "mobile", "Mitglieder");

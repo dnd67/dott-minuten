@@ -5,6 +5,7 @@ import {
   Activity,
   LocateFixed,
   MapPin,
+  MessageSquare,
   Plus,
   Search,
   Terminal,
@@ -23,18 +24,23 @@ import {
   type RpcArgs,
   type Snapshot,
 } from "@/lib/domain";
+import { countUnreadFeedback, summarizeFeedback } from "@/lib/feedback";
 import {
   canonicalPlaceLabel,
   computeRideInsights,
   searchSwissAddress,
   validCoords,
 } from "@/lib/location";
+import { FeedbackInbox } from "./feedback-inbox";
 
 type Props = {
   data: Snapshot;
+  me?: Member;
   admin: boolean;
   demo?: boolean;
   busy: boolean;
+  feedbackSeenAt?: string | null;
+  onMarkFeedbackSeen?: () => void;
   mutate: (action: Action, args: RpcArgs) => Promise<string | boolean>;
   renderAvatar: (member: Member | undefined, size?: string) => ReactNode;
 };
@@ -43,9 +49,12 @@ type TelemetryFilter = "all" | "gps" | "manual" | "unlock" | "shared";
 
 export function DevDashboard({
   data,
+  me,
   admin,
   demo = false,
   busy,
+  feedbackSeenAt = null,
+  onMarkFeedbackSeen,
   mutate,
   renderAvatar,
 }: Props) {
@@ -104,6 +113,13 @@ export function DevDashboard({
   });
 
   const insights = computeRideInsights(data.rides, data.members, places);
+  const feedbackItems = data.feedback ?? [];
+  const feedbackSummary = summarizeFeedback(feedbackItems);
+  const unreadFeedbackCount = countUnreadFeedback(
+    feedbackItems,
+    me?.id,
+    feedbackSeenAt,
+  );
 
   async function lookupAddress() {
     setPlaceErr("");
@@ -226,7 +242,38 @@ export function DevDashboard({
           </div>
           <p>100-m-Zonen aktiv · {sharedTripCount} geteilte Scooter-Fahrten</p>
         </div>
+
+        <div className="metric-card">
+          <div className="card-label">
+            <span>Nutzer-Feedback</span>
+            <span className="metric-icon">
+              <MessageSquare size={20} />
+            </span>
+          </div>
+          <div className="metric-value">
+            {feedbackSummary.total}
+            <span>{feedbackSummary.total === 1 ? "Eintrag" : "Einträge"}</span>
+          </div>
+          <p>
+            {feedbackSummary.total === 0
+              ? "Noch keine Rückmeldungen"
+              : `${feedbackSummary.idea} Ideen · ${feedbackSummary.bug} Probleme · ${feedbackSummary.praise} Lob${unreadFeedbackCount > 0 ? ` · ${unreadFeedbackCount} neu` : ""}`}
+          </p>
+        </div>
       </section>
+
+      <FeedbackInbox
+        key={data.group.id}
+        feedback={feedbackItems}
+        members={data.members}
+        accounts={data.accounts ?? []}
+        me={me}
+        admin={admin}
+        demo={demo}
+        seenAt={feedbackSeenAt}
+        onMarkSeen={onMarkFeedbackSeen}
+        renderAvatar={renderAvatar}
+      />
 
       <section className="panel">
         <div className="panel-heading">

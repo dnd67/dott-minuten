@@ -11,24 +11,43 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import {
-  dateLabel,
-  type Action,
-  type FeedbackCategory,
-  type FeedbackItem,
-  type Member,
-  type RpcArgs,
+import type {
+  Action,
+  FeedbackCategory,
+  FeedbackItem,
+  Member,
+  RpcArgs,
 } from "@/lib/domain";
+import {
+  FEEDBACK_CATEGORY_LABELS,
+  feedbackCategoryMeta,
+  formatFeedbackDate,
+  isFeedbackLive,
+  mergeFeedbackLists,
+  resolveFeedbackAuthor,
+  sortFeedbackNewest,
+} from "@/lib/feedback";
+
+export { isFeedbackLive } from "@/lib/feedback";
 
 const LOCAL_FEEDBACK_KEY = "minutenclub-feedback-preview-v1";
-
-export const isFeedbackLive = () =>
-  process.env.NEXT_PUBLIC_FEEDBACK_ENABLED === "true";
 
 function loadLocalFeedback(): FeedbackItem[] {
   try {
     const raw = localStorage.getItem(LOCAL_FEEDBACK_KEY);
-    if (raw) return JSON.parse(raw) as FeedbackItem[];
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(
+          (item): item is FeedbackItem =>
+            Boolean(item) &&
+            typeof item === "object" &&
+            typeof (item as FeedbackItem).id === "string" &&
+            (item as FeedbackItem).id.trim().length > 0 &&
+            typeof (item as FeedbackItem).message === "string",
+        );
+      }
+    }
   } catch {
     /* Ohne Storage leere Vorschau-Liste. */
   }
@@ -48,22 +67,16 @@ const CATEGORIES: {
   label: string;
   icon: typeof Lightbulb;
 }[] = [
-  { id: "idea", label: "Idee", icon: Lightbulb },
-  { id: "bug", label: "Problem", icon: Bug },
-  { id: "praise", label: "Lob", icon: Heart },
-  { id: "other", label: "Allgemein", icon: MessageSquare },
+  { id: "idea", label: FEEDBACK_CATEGORY_LABELS.idea, icon: Lightbulb },
+  { id: "bug", label: FEEDBACK_CATEGORY_LABELS.bug, icon: Bug },
+  { id: "praise", label: FEEDBACK_CATEGORY_LABELS.praise, icon: Heart },
+  { id: "other", label: FEEDBACK_CATEGORY_LABELS.other, icon: MessageSquare },
 ];
-
-const CATEGORY_LABELS: Record<FeedbackCategory, string> = {
-  idea: "Idee",
-  bug: "Problem",
-  praise: "Lob",
-  other: "Allgemein",
-};
 
 type Props = {
   motion: boolean;
   demo: boolean;
+  admin?: boolean;
   currentPage: string;
   me?: Member;
   members: Member[];
@@ -71,12 +84,14 @@ type Props = {
   busy: boolean;
   remoteError: string;
   onSave: (action: Action, args: RpcArgs) => Promise<string | boolean>;
+  onOpenAdminFeedback?: () => void;
   onClose: () => void;
 };
 
 export function FeedbackDialog({
   motion,
   demo,
+  admin = false,
   currentPage,
   me,
   members,
@@ -84,6 +99,7 @@ export function FeedbackDialog({
   busy,
   remoteError,
   onSave,
+  onOpenAdminFeedback,
   onClose,
 }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -97,6 +113,7 @@ export function FeedbackDialog({
   );
 
   const live = !demo && isFeedbackLive();
+  const isAdminViewer = Boolean(admin && !demo);
 
   useLayoutEffect(() => {
     dialog.current?.showModal();
@@ -155,11 +172,12 @@ export function FeedbackDialog({
     setMessage("");
   }
 
-  const combinedList = live || demo ? remoteFeedback : localItems;
-  const memberName = (id: string) =>
-    members.find((m) => m.id === id)?.display_name ??
-    me?.display_name ??
-    "Mitglied";
+  const combinedList =
+    live || demo
+      ? sortFeedbackNewest(remoteFeedback)
+      : mergeFeedbackLists(remoteFeedback, localItems);
+  const memberName = (item: FeedbackItem) =>
+    resolveFeedbackAuthor(item, members).displayName;
 
   return (
     <dialog
@@ -305,21 +323,42 @@ export function FeedbackDialog({
           </form>
         )}
 
+        {isAdminViewer && onOpenAdminFeedback && (
+          <div className="feedback-admin-bar">
+            <span>
+              Als Admin siehst du alle Rückmeldungen deiner Crew (
+              {combinedList.length}) mit Filter und Suche im Dev-Dashboard.
+            </span>
+            <button
+              type="button"
+              className="button secondary compact-btn"
+              disabled={busy}
+              onClick={() => onOpenAdminFeedback()}
+            >
+              Alle im Dev-Dashboard ansehen
+            </button>
+          </div>
+        )}
+
         {combinedList.length > 0 && (
           <details className="feedback-history">
-            <summary>Bisherige Rückmeldungen ({combinedList.length})</summary>
+            <summary>
+              {isAdminViewer
+                ? `Rückmeldungen der Crew (${combinedList.length})`
+                : `Deine bisherigen Rückmeldungen (${combinedList.length})`}
+            </summary>
             <div className="feedback-list">
               {combinedList.slice(0, 8).map((item) => (
                 <div className="feedback-item" key={item.id}>
                   <div>
                     <span className="pill active">
-                      {CATEGORY_LABELS[item.category] ?? item.category}
+                      {feedbackCategoryMeta(item.category).label}
                     </span>
                     {item.page && <small> · {item.page}</small>}
                     <small>
                       {" "}
-                      · {memberName(item.member_id)} ·{" "}
-                      {dateLabel(item.created_at, true)}
+                      · {memberName(item)} ·{" "}
+                      {formatFeedbackDate(item.created_at)}
                     </small>
                   </div>
                   <p>{item.message}</p>

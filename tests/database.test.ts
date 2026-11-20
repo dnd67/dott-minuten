@@ -710,7 +710,13 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
 
       // Feedback: Mitglied speichert eigenes Feedback; Admin sieht alle, Mitglied nur eigene.
       const fbFriend = randomUUID(),
-        fbOwner = randomUUID();
+        fbOwner = randomUUID(),
+        fbMax = randomUUID();
+      const [{ id: maxMember }] = await as<{ id: string }>(
+        owner,
+        "select id from public.memberships where group_id=$1 and user_id=$2",
+        [gid, outsider],
+      );
       await as(
         friend,
         "select public.submit_feedback($1,$2,'idea',$3,'Statistik')",
@@ -727,13 +733,14 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
         [gid, fbOwner, "Admin-Notiz zum Launch"],
       );
 
-      const friendVisible = await as<{ id: string }>(
+      const friendVisible = await as<{ id: string; message: string }>(
         friend,
-        "select id from public.feedback where group_id=$1",
+        "select id, message from public.feedback where group_id=$1",
         [gid],
       );
       assert.equal(friendVisible.length, 1);
       assert.equal(friendVisible[0].id, fbFriend);
+      assert.equal(friendVisible[0].message, "Uhrzeitfilter ist super");
 
       const ownerVisible = await as<{ id: string }>(
         owner,
@@ -742,22 +749,137 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
       );
       assert.equal(ownerVisible.length, 2);
 
-      const [dashFriend] = await as<{ value: { feedback: unknown[] } }>(
+      const [dashFriend] = await as<{ value: { feedback: { id: string }[] } }>(
         friend,
         "select public.get_dashboard($1) as value",
         [gid],
       );
       assert.equal(dashFriend.value.feedback.length, 1);
+      assert.equal(dashFriend.value.feedback[0].id, fbFriend);
 
-      const [dashOwner] = await as<{ value: { feedback: unknown[] } }>(
+      const [dashOwner] = await as<{ value: { feedback: { id: string }[] } }>(
         owner,
         "select public.get_dashboard($1) as value",
         [gid],
       );
       assert.equal(dashOwner.value.feedback.length, 2);
 
+      // Weiteres aktives Mitglied (Max) sendet Feedback; Sortierung neueste zuerst (created_at desc).
+      await as(
+        outsider,
+        "select public.submit_feedback($1,$2,'praise',$3,'Übersicht')",
+        [gid, fbMax, "Gute App für die Crew"],
+      );
+      await db.exec("reset role");
+      await db.query("update public.feedback set created_at=$2 where id=$1", [
+        fbFriend,
+        "2026-01-03T10:00:00Z",
+      ]);
+      await db.query("update public.feedback set created_at=$2 where id=$1", [
+        fbOwner,
+        "2026-01-03T11:00:00Z",
+      ]);
+      await db.query("update public.feedback set created_at=$2 where id=$1", [
+        fbMax,
+        "2026-01-03T12:00:00Z",
+      ]);
+
+      const [dashFriendMulti] = await as<{
+        value: { feedback: { id: string }[] };
+      }>(friend, "select public.get_dashboard($1) as value", [gid]);
+      assert.deepEqual(
+        dashFriendMulti.value.feedback.map((f) => f.id),
+        [fbFriend],
+      );
+
+      const [dashMax] = await as<{ value: { feedback: { id: string }[] } }>(
+        outsider,
+        "select public.get_dashboard($1) as value",
+        [gid],
+      );
+      assert.deepEqual(
+        dashMax.value.feedback.map((f) => f.id),
+        [fbMax],
+      );
+
+      const [dashOwnerOrdered] = await as<{
+        value: { feedback: { id: string; member_id: string }[] };
+      }>(owner, "select public.get_dashboard($1) as value", [gid]);
+      assert.deepEqual(
+        dashOwnerOrdered.value.feedback.map((f) => f.id),
+        [fbMax, fbOwner, fbFriend],
+      );
+
+      // Feedback eines später deaktivierten Mitglieds bleibt für Admins sichtbar;
+      // das deaktivierte Mitglied selbst verliert den Zugriff.
+      await as(owner, "select public.update_member($1,$2,$3,'member',false)", [
+        gid,
+        randomUUID(),
+        maxMember,
+      ]);
+      assert.equal(
+        (
+          await as(
+            outsider,
+            "select id from public.feedback where group_id=$1",
+            [gid],
+          )
+        ).length,
+        0,
+      );
+      const [dashOwnerAfterDeact] = await as<{
+        value: { feedback: { id: string; member_id: string }[] };
+      }>(owner, "select public.get_dashboard($1) as value", [gid]);
+      assert.deepEqual(
+        dashOwnerAfterDeact.value.feedback.map((f) => f.id),
+        [fbMax, fbOwner, fbFriend],
+      );
+      assert.equal(dashOwnerAfterDeact.value.feedback[0].member_id, maxMember);
+
+      // Gruppenfremde Person (Nicht-Mitglied) sieht 0 Feedback-Einträge.
+      const unknownUser = randomUUID();
+      await db.exec("reset role");
+      await db.query("insert into auth.users values($1)", [unknownUser]);
+      assert.equal(
+        (
+          await as(
+            unknownUser,
+            "select id from public.feedback where group_id=$1",
+            [gid],
+          )
+        ).length,
+        0,
+      );
+      assert.equal(
+        (await as(unknownUser, "select id from public.feedback")).length,
+        0,
+      );
+
+      // Direktes DELETE und UPDATE auf public.feedback sind sowohl für Mitglieder als auch für Admins gesperrt.
       await assert.rejects(
         () => as(friend, "delete from public.feedback where id=$1", [fbFriend]),
+        /permission denied/,
+      );
+      await assert.rejects(
+        () =>
+          as(
+            friend,
+            "update public.feedback set message='Geändert' where id=$1",
+            [fbFriend],
+          ),
+        /permission denied/,
+      );
+      await assert.rejects(
+        () => as(owner, "delete from public.feedback where id=$1", [fbFriend]),
+        /permission denied/,
+      );
+      await assert.rejects(
+        () =>
+          as(
+            owner,
+            "update public.feedback set message='Geändert' where id=$1",
+            [fbFriend],
+          ),
         /permission denied/,
       );
     },

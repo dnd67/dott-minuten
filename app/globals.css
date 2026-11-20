@@ -3771,9 +3771,197 @@ tr.voided td {
   font-size: 0.75rem;
   color: var(--secondary);
 }
+.dev-topbar-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: var(--danger);
+  color: var(--on-danger);
+}
+.feedback-admin-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.8rem;
+  background: var(--inset);
+  border: 1px solid var(--line);
+  font-size: 0.84rem;
+  color: var(--secondary);
+}
+.feedback-admin-bar > span {
+  flex: 1 1 12rem;
+}
+.feedback-inbox-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+.feedback-unread-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+}
+.feedback-inbox-env-hint {
+  margin: 0 var(--pad) 0.9rem;
+}
+.feedback-inbox-env-hint code {
+  overflow-wrap: anywhere;
+}
+.feedback-inbox-controls {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0 var(--pad) 0.95rem;
+}
+.feedback-inbox-categories {
+  margin-bottom: 0;
+}
+.feedback-inbox-categories button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.feedback-inbox-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 14rem) minmax(0, 1fr);
+  gap: 0.6rem;
+  min-width: 0;
+}
+.feedback-inbox-filters select,
+.feedback-search-wrap input {
+  width: 100%;
+  min-width: 0;
+}
+.feedback-search-wrap {
+  min-width: 0;
+}
+.feedback-inbox-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.7rem;
+  padding: 0 var(--pad) var(--pad);
+}
+.feedback-inbox-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.55rem;
+  padding: 0.9rem 1rem;
+  border-radius: 0.9rem;
+  background: var(--inset);
+  border: 1px solid var(--line);
+  min-width: 0;
+}
+.feedback-inbox-card.unread {
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--line));
+}
+.feedback-inbox-card .subtle-pill,
+.feedback-inbox-card .pill.muted {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--secondary);
+}
+.feedback-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.55rem 0.8rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.feedback-card-head .person-cell {
+  min-width: 0;
+  max-width: 100%;
+}
+.feedback-card-head .person-cell > div {
+  min-width: 0;
+}
+.feedback-author-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+.feedback-author-row strong,
+.feedback-author-handle {
+  overflow-wrap: anywhere;
+}
+.feedback-author-handle {
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  color: var(--secondary);
+}
+.feedback-card-badges {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.feedback-cat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.feedback-cat-badge.cat-idea {
+  background: color-mix(in srgb, var(--tint) 14%, transparent);
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+.feedback-cat-badge.cat-bug {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.feedback-cat-badge.cat-praise {
+  background: color-mix(in srgb, var(--positive) 10%, var(--surface));
+  color: var(--positive);
+  border: 1px solid color-mix(in srgb, var(--positive) 28%, transparent);
+}
+.feedback-cat-badge.cat-other {
+  background: var(--soft);
+  color: var(--secondary);
+}
+.feedback-page-pill {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.feedback-card-message {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--ink);
+  margin: 0;
+}
 @media (max-width: 48rem) {
   .dev-analytics-split,
-  .dev-address-row {
+  .dev-address-row,
+  .feedback-inbox-filters {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .feedback-inbox-actions {
+    width: 100%;
   }
 }

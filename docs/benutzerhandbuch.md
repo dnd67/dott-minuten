@@ -58,6 +58,7 @@ Ein persönlicher Saldo darf negativ sein, damit ihr eine tatsächlich gefahrene
 - **Mitglieder verwalten** können Admins unter **Mitglieder**. Deaktivierte Personen verlieren den Zugriff. Ihre bisherigen Buchungen bleiben nachvollziehbar. Mindestens ein aktiver Admin muss erhalten bleiben.
 - **Fahrt korrigieren.** Ein Admin sucht die Fahrt unter **Fahrten**, wählt **Stornieren** und gibt einen Grund an. Die Minuten werden einmal zurückgebucht. Danach erfasst die fahrende Person bei Bedarf die richtige Fahrt mit ihrem eigenen Login.
 - **Storno ansehen.** Wähle unter **Fahrten** im Statusfilter **Storno-Verlauf**. Hier zählen Sortierung und Zeitraum ab dem Stornozeitpunkt. Die Zeile zeigt Grund, Zeitpunkt, ausführende Person soweit erfasst und die zurückgebuchten Minuten.
+- **Feedback senden und als Admin einsehen.** Alle Mitglieder können über **Feedback** Rückmeldungen senden und sehen dort ihre eigenen Einträge. Admins sehen alle Rückmeldungen der Crew im **Admin Dev-Dashboard** (**Nutzer-Feedback der Crew**) inklusive Kategorie- und Mitgliederfilter, Suche sowie Hinweis für ungelesene Beiträge – und können auch direkt aus dem Feedback-Fenster dorthin springen.
 
 ## Auf dem Laptop oder iPhone öffnen
 

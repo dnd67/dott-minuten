@@ -63,6 +63,12 @@ import {
   type Snapshot,
 } from "@/lib/domain";
 import {
+  computeFeedbackSeenCursor,
+  countUnreadFeedback,
+  loadFeedbackSeenAt,
+  saveFeedbackSeenAt,
+} from "@/lib/feedback";
+import {
   canonicalPlaceLabel,
   clearActiveUnlock,
   knownPlaceSuggestions,
@@ -276,6 +282,50 @@ export function Dashboard(p: Props) {
   const openResetsCount = admin
     ? (data.reset_requests ?? []).filter((r) => r.status === "open").length
     : 0;
+
+  const [feedbackSeenState, setFeedbackSeenState] = useState<{
+    groupId: string;
+    seenAt: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!admin || p.demo) {
+      setFeedbackSeenState(null);
+      return;
+    }
+    setFeedbackSeenState({
+      groupId: data.group.id,
+      seenAt: loadFeedbackSeenAt(data.group.id),
+    });
+  }, [admin, p.demo, data.group.id]);
+
+  const feedbackSeenAt =
+    admin && !p.demo && feedbackSeenState?.groupId === data.group.id
+      ? feedbackSeenState.seenAt
+      : null;
+
+  const unreadFeedbackCount =
+    admin && !p.demo
+      ? countUnreadFeedback(data.feedback ?? [], me?.id, feedbackSeenAt)
+      : 0;
+
+  function markFeedbackSeen() {
+    if (!admin || p.demo) return;
+    const cursor = computeFeedbackSeenCursor(data.feedback ?? []);
+    saveFeedbackSeenAt(data.group.id, cursor);
+    setFeedbackSeenState({ groupId: data.group.id, seenAt: cursor });
+  }
+
+  function openAdminFeedback() {
+    if (!admin || p.demo) return;
+    setFeedbackOpen(null);
+    navigate("dev");
+    requestAnimationFrame(() => {
+      document
+        .getElementById("dev-feedback")
+        ?.scrollIntoView({ behavior: "smooth" });
+    });
+  }
 
   const memberSummaries = useMemo(() => {
     const map = new Map<string, ReturnType<typeof summary>>();
@@ -776,6 +826,11 @@ export function Dashboard(p: Props) {
             >
               <Terminal size={18} />
               <span>Dev-Dashboard</span>
+              {unreadFeedbackCount > 0 && (
+                <i className="nav-badge" aria-hidden="true">
+                  {unreadFeedbackCount}
+                </i>
+              )}
             </button>
           )}
           <button
@@ -844,14 +899,27 @@ export function Dashboard(p: Props) {
               <button
                 type="button"
                 className={`dev-topbar-btn ${activeTab === "dev" ? "active-icon-btn" : ""}`}
-                aria-label="Dev-Dashboard öffnen"
-                title="Admin Dev-Dashboard"
+                aria-label={
+                  unreadFeedbackCount > 0
+                    ? `Dev-Dashboard öffnen (${unreadFeedbackCount} neues Feedback)`
+                    : "Dev-Dashboard öffnen"
+                }
+                title={
+                  unreadFeedbackCount > 0
+                    ? `Admin Dev-Dashboard · ${unreadFeedbackCount} neues Feedback`
+                    : "Admin Dev-Dashboard"
+                }
                 onClick={() =>
                   navigate(activeTab === "dev" ? "overview" : "dev")
                 }
               >
                 <Terminal size={15} />
                 <span>Dev</span>
+                {unreadFeedbackCount > 0 && (
+                  <span className="dev-topbar-badge" aria-hidden="true">
+                    {unreadFeedbackCount}
+                  </span>
+                )}
               </button>
             )}
             <button
@@ -1921,8 +1989,8 @@ export function Dashboard(p: Props) {
                       <div>
                         <strong>Admin Dev-Dashboard</strong>
                         <small>
-                          GPS-Telemetrie pro Fahrt &amp; private 100-m-Crew-Orte
-                          verwalten
+                          Nutzer-Feedback, GPS-Telemetrie &amp; private
+                          100-m-Crew-Orte verwalten
                         </small>
                       </div>
                       <button
@@ -1981,9 +2049,12 @@ export function Dashboard(p: Props) {
           {activeTab === "dev" && admin && !p.demo && (
             <DevDashboard
               data={data}
+              me={me}
               admin={admin}
               demo={p.demo}
               busy={p.busy}
+              feedbackSeenAt={feedbackSeenAt}
+              onMarkFeedbackSeen={markFeedbackSeen}
               mutate={p.mutate}
               renderAvatar={avatar}
             />
@@ -2117,6 +2188,7 @@ export function Dashboard(p: Props) {
         <FeedbackDialog
           motion={feedbackOpen.motion}
           demo={p.demo}
+          admin={admin}
           currentPage={currentTabLabel}
           me={me}
           members={data.members}
@@ -2124,6 +2196,7 @@ export function Dashboard(p: Props) {
           busy={p.busy}
           remoteError={p.error}
           onSave={p.mutate}
+          onOpenAdminFeedback={admin ? openAdminFeedback : undefined}
           onClose={() => setFeedbackOpen(null)}
         />
       )}
