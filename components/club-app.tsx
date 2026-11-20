@@ -34,7 +34,12 @@ import {
   updateOwnPassword,
   usernameToAuthEmail,
 } from "@/lib/accounts";
-import { DEMO_USER, demoAction, demoSnapshot } from "@/lib/demo";
+import {
+  DEMO_USER,
+  demoAction,
+  demoSnapshot,
+  normalizeDemoSnapshot,
+} from "@/lib/demo";
 import type { Action, Group, RpcArgs, Snapshot } from "@/lib/domain";
 import { Dashboard } from "./dashboard";
 import { OnboardingModal } from "./onboarding-modal";
@@ -78,20 +83,30 @@ export function ClubApp() {
   const createId = useRef<string | null>(null);
 
   const persistDemo = useCallback((next: Snapshot) => {
-    setSnapshot(next);
+    const safe = normalizeDemoSnapshot(next);
+    setSnapshot(safe);
     try {
-      localStorage.setItem(DEMO_KEY, JSON.stringify(next));
+      localStorage.setItem(DEMO_KEY, JSON.stringify(safe));
     } catch {}
     setSyncedAt(new Date());
   }, []);
 
   const startDemo = useCallback(() => {
     let data = demoSnapshot();
+    let hadStored = false;
     try {
       const stored = localStorage.getItem(DEMO_KEY);
-      if (stored) data = JSON.parse(stored) as Snapshot;
+      if (stored !== null) {
+        hadStored = true;
+        data = normalizeDemoSnapshot(JSON.parse(stored) as Snapshot);
+      }
     } catch {
       /* Demo bleibt auch ohne Browser-Speicher nutzbar. */
+    }
+    if (hadStored) {
+      try {
+        localStorage.setItem(DEMO_KEY, JSON.stringify(data));
+      } catch {}
     }
     setDemo(true);
     setSnapshot(data);
@@ -288,12 +303,9 @@ export function ClubApp() {
       };
       let result: string | boolean = true;
       if (demo) {
-        if (action === "create_invite") result = "demo-einladung";
-        else if (action === "revoke_invites") result = true;
-        else if (snapshot) {
-          const next = demoAction(snapshot, action, full);
-          persistDemo(next);
-        }
+        if (!snapshot) return false;
+        const next = demoAction(normalizeDemoSnapshot(snapshot), action, full);
+        persistDemo(next);
       } else {
         const response = await client!.rpc(action, full);
         if (response.error) throw response.error;
@@ -317,23 +329,7 @@ export function ClubApp() {
   ): Promise<boolean> {
     setError("");
     if (demo) {
-      if (!snapshot) return false;
-      const next = structuredClone(snapshot);
-      const target = next.members.find((m) => m.id === memberId);
-      if (!target) return false;
-      const now = new Date().toISOString();
-      next.accounts ??= [];
-      const acc = next.accounts.find((a) => a.user_id === target.user_id);
-      if (acc) acc.password_updated_at = now;
-      for (const r of next.reset_requests ?? []) {
-        if (r.member_id === memberId && r.status === "open") {
-          r.status = "completed";
-          r.resolved_at = now;
-          r.resolved_by_member_id = "demo-0";
-        }
-      }
-      persistDemo(next);
-      return true;
+      throw new Error("Keine Berechtigung für diese Gruppe.");
     }
     if (!client) return false;
     await adminSetMemberPassword(client, groupId, memberId, newPassword);
@@ -349,31 +345,7 @@ export function ClubApp() {
   }): Promise<string | false> {
     setError("");
     if (demo) {
-      if (!snapshot) return false;
-      const cleanUser = normalizeUsername(args.username);
-      if ((snapshot.accounts ?? []).some((a) => a.username === cleanUser)) {
-        throw new Error("Dieser Benutzername ist bereits vergeben.");
-      }
-      const next = structuredClone(snapshot);
-      const uid = `user-${crypto.randomUUID()}`;
-      const mid = `demo-${crypto.randomUUID()}`;
-      const now = new Date().toISOString();
-      next.members.push({
-        id: mid,
-        group_id: next.group.id,
-        user_id: uid,
-        display_name: args.displayName.trim(),
-        role: args.role,
-        active: true,
-      });
-      next.accounts ??= [];
-      next.accounts.push({
-        user_id: uid,
-        username: cleanUser,
-        password_updated_at: now,
-      });
-      persistDemo(next);
-      return cleanUser;
+      throw new Error("Keine Berechtigung für diese Gruppe.");
     }
     if (!client) return false;
     const created = await adminCreateMemberAccount(client, {

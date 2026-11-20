@@ -4,7 +4,7 @@ Minutenclub führt Buch über die Dott-Minuten, die eure Gruppe gemeinsam kauft.
 
 ## Zum ersten Mal öffnen
 
-**Ausprobieren.** Öffne im Browser die App und wähle die Demo. Du siehst Beispieldaten für Oskar, August und Max und kannst alle Admin-Abläufe ausprobieren. Die Demo speichert Änderungen auf diesem Gerät in diesem Browser. «Zurücksetzen» am Seitenende lädt wieder die Ausgangsdaten. Für einen lokalen Start auf dem Laptop gibt es unten eine Anleitung.
+**Ausprobieren.** Öffne im Browser die App und wähle die Demo. Du siehst Beispieldaten für Oskar, August und Max und nutzt die App als normal angemeldetes Mitglied mit den grundlegenden Rechten (ohne Admin-Funktionen und ohne Dev-Dashboard). Die Demo speichert Änderungen auf diesem Gerät in diesem Browser. «Zurücksetzen» am Seitenende lädt wieder die Ausgangsdaten. Für einen lokalen Start auf dem Laptop gibt es unten eine Anleitung.
 
 **Eurer Gruppe beitreten.** Öffne den Einladungslink vom Admin. Wenn du neu bist, erstelle ein Konto mit einem freien Benutzernamen und Passwort. Ein bereits vorhandenes Konto kann sich direkt anmelden. Beim Gruppenbeitritt gibst du deinen Anzeigenamen an. Der Link füllt den Einladungscode vor, alternativ kannst du ihn selbst eingeben. Neue Mitglieder starten mit null Minuten. Gib Einladungslink und Startpasswort nur privat weiter.
 

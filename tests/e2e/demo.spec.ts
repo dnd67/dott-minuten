@@ -1,12 +1,188 @@
-import { test, expect } from "@playwright/test";
-test("Demo: Fahrt, Guthaben, Paket, Storno, Filter und Einladung", async ({
+import { test, expect, type Page } from "@playwright/test";
+import { DEMO_USER, demoSnapshot } from "../../lib/demo";
+import type { Snapshot } from "../../lib/domain";
+
+type NavMode = "desktop" | "mobile";
+type TabLabel =
+  | "Übersicht"
+  | "Fahrten"
+  | "Guthaben"
+  | "Statistik"
+  | "Mitglieder";
+
+async function switchTab(page: Page, mode: NavMode, label: TabLabel) {
+  if (mode === "desktop") {
+    await page.locator(".sidebar .nav-item").filter({ hasText: label }).click();
+  } else {
+    await page
+      .locator(".mobile-nav")
+      .getByRole("button", { name: label, exact: true })
+      .click();
+  }
+}
+
+async function assertNoGlobalAdminOrDevChrome(page: Page, mode: NavMode) {
+  await expect(
+    page.locator(".sidebar").getByRole("button", { name: "Dev-Dashboard" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Dev-Dashboard öffnen" }),
+  ).toHaveCount(0);
+  await expect(page.locator(".dev-topbar-btn")).toHaveCount(0);
+  await expect(page.locator(".nav-badge")).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Fahrt-Telemetrie & GPS-Inspektor" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Crew-Orte & 100-m-Adresszonen" }),
+  ).toHaveCount(0);
+  if (mode === "mobile") {
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(390);
+  }
+}
+
+async function assertNoAdminOrDevControls(
+  page: Page,
+  mode: NavMode,
+  expectedOwnName = "Oskar",
+) {
+  // 1. Übersicht
+  await switchTab(page, mode, "Übersicht");
+  await assertNoGlobalAdminOrDevChrome(page, mode);
+  await expect(page.locator(".reset-alert-banner")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Passwort-Dashboard öffnen" }),
+  ).toHaveCount(0);
+
+  // 2. Fahrten (6 Spalten sauber ausgerichtet, keine Stornieren-Aktion)
+  await switchTab(page, mode, "Fahrten");
+  await assertNoGlobalAdminOrDevChrome(page, mode);
+  await expect(page.getByRole("button", { name: "Stornieren" })).toHaveCount(0);
+  const headers = page.locator("main table thead th");
+  await expect(headers).toHaveCount(6);
+  await expect(headers).toHaveText([
+    "Mitglied",
+    "Fahrt",
+    "Fahrzeit",
+    "Pause",
+    "Verbrauch",
+    "Kosten¹",
+  ]);
+  const cellCounts = await page
+    .locator("main table tbody tr")
+    .evaluateAll((rows) =>
+      rows.map((row) => (row as HTMLTableRowElement).cells.length),
+    );
+  expect(cellCounts.length).toBeGreaterThan(0);
+  expect(cellCounts.every((n) => n === 6)).toBe(true);
+
+  // 3. Guthaben (Nur-Lese-Ansicht ohne Admin-Buchungen)
+  await switchTab(page, mode, "Guthaben");
+  await assertNoGlobalAdminOrDevChrome(page, mode);
+  await expect(
+    page.getByRole("button", { name: "Minuten manuell geben" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Guthaben aufladen" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Minutenkonten" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Minutenpakete" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Buchungshistorie" }),
+  ).toBeVisible();
+
+  // 4. Statistik (Strecken-Bestzeiten sichtbar, kein Dev-Dashboard)
+  await switchTab(page, mode, "Statistik");
+  await assertNoGlobalAdminOrDevChrome(page, mode);
+  await expect(
+    page.getByRole("heading", {
+      name: "Strecken-Bestzeiten · Wer ist am schnellsten?",
+    }),
+  ).toBeVisible();
+
+  // 5. Mitglieder (keine Einladungen, Rollenwahl, Deaktivierung, Fremd-Umbenennung, Admin-Passwörter oder Dev-Row)
+  await switchTab(page, mode, "Mitglieder");
+  await assertNoGlobalAdminOrDevChrome(page, mode);
+  await expect(
+    page.getByRole("button", { name: "Einladung erstellen" }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Links sperren" })).toHaveCount(
+    0,
+  );
+  await expect(page.locator(".invite-box")).toHaveCount(0);
+  await expect(page.locator('.members-list select[id^="role-"]')).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole("button", { name: "Deaktivieren" })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole("button", { name: "Aktivieren" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Name ändern von August", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Name ändern von Max", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.locator(".members-list").getByRole("button", { name: /Name ändern/ }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByRole("button", {
+      name: `Name ändern von ${expectedOwnName}`,
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("Admin Dev-Dashboard")).toHaveCount(0);
+  await expect(
+    page.getByText("Ändere hier jederzeit dein eigenes Passwort.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Eigenes Passwort ändern (@oskar)" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Mitglied direkt anlegen" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Offene Zurücksetzungs-Anfragen" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", {
+      name: "Mitglieder-Passwörter direkt verwalten",
+    }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Passwort neu setzen" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Neues Passwort setzen" }),
+  ).toHaveCount(0);
+  await expect(page.locator(".pw-reset-row")).toHaveCount(0);
+}
+
+test("Demo (Desktop): normales Mitglied ohne Admin-/Dev-Rechte – Fahrt, Filter, Guthaben, Statistik, eigener Name, Passwort, Persistenz & Reset", async ({
   page,
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
+
   await page.goto("/");
   await page.getByRole("button", { name: "Demo ausprobieren" }).click();
   await expect(page.getByRole("heading", { name: "Hoi Oskar" })).toBeVisible();
+  await expect(
+    page.getByRole("img", {
+      name: "Oskar: 51 von 200 Minuten verbraucht, 149 Minuten übrig.",
+    }),
+  ).toBeVisible();
+
+  // Fahrt eintragen (inkl. Escape-Fokusrückkehr)
   const addRide = page.getByRole("button", { name: "Fahrt eintragen" });
   await addRide.click();
   await page.keyboard.press("Escape");
@@ -19,65 +195,219 @@ test("Demo: Fahrt, Guthaben, Paket, Storno, Filter und Einladung", async ({
   await page.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(page.locator("dialog")).toHaveCount(0);
   await expect(page.getByText("Testfahrt", { exact: true })).toBeVisible();
-  const nav = (name: string) =>
-    page.locator(".sidebar .nav-item").filter({ hasText: name });
-  await nav("Guthaben").click();
-  await page.getByRole("button", { name: "Minuten manuell geben" }).click();
-  await page.getByLabel("Guthaben für").selectOption("demo-0");
-  await page.getByLabel("Minuten", { exact: true }).fill("45");
-  await page.getByLabel("Grund").fill("Testgutschrift");
-  await page.getByRole("button", { name: "Speichern", exact: true }).click();
-  await expect(page.getByText("Testgutschrift")).toBeVisible();
-  await page.getByRole("button", { name: "Guthaben aufladen" }).click();
-  await page.getByLabel("Minuten", { exact: true }).fill("300");
-  await page.getByRole("button", { name: "Nach CHF-Beitrag" }).click();
-  await page.getByLabel("Paketpreis (CHF)").fill("45.00");
-  await page.getByLabel("Oskar", { exact: true }).fill("15");
-  await page.getByLabel("August", { exact: true }).fill("30");
-  await page.getByLabel("Notiz optional").fill("Testpaket");
-  await page.getByRole("button", { name: "Speichern", exact: true }).click();
-  await expect(page.getByRole("cell", { name: "Testpaket" })).toBeVisible();
-  await nav("Fahrten").click();
-  await page
-    .getByRole("row")
-    .filter({ hasText: "Testfahrt" })
-    .getByRole("button", { name: "Stornieren" })
-    .click();
-  await page.getByLabel("Grund").fill("Doppelt");
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Stornieren", exact: true })
-    .click();
-  await expect(page.getByText("Storniert · Doppelt")).toBeVisible();
+
+  // Übersicht aktualisiert Restguthaben, Kontingentdiagramm und Bestand
+  await expect(page.locator(".balance-number")).toContainText("134");
+  await expect(
+    page.getByRole("img", {
+      name: "Oskar: 66 von 200 Minuten verbraucht, 134 Minuten übrig.",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".metric-card").filter({ hasText: "Von dir verbraucht" }),
+  ).toContainText("66");
+  await expect(
+    page.locator(".metric-card").filter({ hasText: "Gemeinsamer Bestand" }),
+  ).toContainText("428");
+
+  // Umfassende Negativprüfung auf Desktop: null Dev-Dashboard, null Admin-Steuerelemente
+  await assertNoAdminOrDevControls(page, "desktop", "Oskar");
+
+  // Fahrten-Filter & 6-Spalten-Tabelle
+  await switchTab(page, "desktop", "Fahrten");
+  await expect(page.locator("main table tbody tr")).toHaveCount(13);
+  await page.getByLabel("Person", { exact: true }).selectOption("demo-0");
+  await expect(page.locator("main table tbody tr")).toHaveCount(5);
+  await expect(page.getByText("Testfahrt", { exact: true })).toBeVisible();
+  await page.getByLabel("Person", { exact: true }).selectOption("all");
   await page.getByLabel("Status", { exact: true }).selectOption("voided");
-  await expect(page.locator("tbody tr")).toHaveCount(1);
-  await expect(page.getByText("+15 Min. zurückgebucht")).toBeVisible();
+  await expect(page.locator("main table tbody tr")).toHaveCount(0);
+  await expect(page.getByText("Noch keine Fahrten")).toBeVisible();
   await page.getByLabel("Status", { exact: true }).selectOption("active");
-  await expect(page.getByText("Storniert · Doppelt")).toHaveCount(0);
-  await nav("Statistik").click();
+  await expect(page.locator("main table tbody tr")).toHaveCount(13);
+
+  // Guthaben: schreibgeschützte Konten, Pakete & Journal
+  await switchTab(page, "desktop", "Guthaben");
+  await expect(
+    page.locator(".account-item").filter({ hasText: "Oskar" }),
+  ).toContainText("134");
+  await expect(
+    page.locator(".account-item").filter({ hasText: "August" }),
+  ).toContainText("147");
+  await expect(
+    page.locator(".account-item").filter({ hasText: "Max" }),
+  ).toContainText("147");
+  await expect(
+    page.getByRole("cell", { name: "Gemeinsames Minutenpaket" }),
+  ).toBeVisible();
+  await expect(page.locator(".journal-row").first()).toBeVisible();
+
+  // Statistik: Strecken-Bestzeiten & Personenfilter
+  await switchTab(page, "desktop", "Statistik");
+  await expect(page.locator(".route-record-card").first()).toBeVisible();
   await page.getByLabel("Person", { exact: true }).selectOption("demo-0");
   await expect(page.locator(".stats-person")).toHaveCount(1);
-  await nav("Mitglieder").click();
+
+  // Mitglieder: Rollen prüfen, eigenen Namen und eigenes Passwort ändern
+  await switchTab(page, "desktop", "Mitglieder");
+  const oskarRow = page
+    .locator(".member-row")
+    .filter({ hasText: "Oskar (du)" });
+  const augustRow = page.locator(".member-row").filter({ hasText: "August" });
+  const maxRow = page.locator(".member-row").filter({ hasText: "Max" });
+  await expect(oskarRow).toContainText("Mitglied");
+  await expect(oskarRow).not.toContainText("Administrator");
+  await expect(augustRow).toContainText("Administrator");
+  await expect(maxRow).toContainText("Mitglied");
+
   await page
     .getByRole("button", { name: "Name ändern von Oskar", exact: true })
     .click();
   await page.getByLabel("Anzeigename").fill("Oskar Neu");
   await page.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(page.locator("dialog")).toHaveCount(0);
   await expect(page.getByText("Oskar Neu (du)", { exact: true })).toBeVisible();
-  await nav("Übersicht").click();
+
+  await page.locator("#own-new-pw").fill("OskarPass2026");
+  await page.locator("#own-confirm-pw").fill("OskarPass2026");
+  await page
+    .getByRole("button", { name: "Eigenes Passwort speichern" })
+    .click();
+  await expect(
+    page.getByText("Dein Passwort wurde aktualisiert."),
+  ).toBeVisible();
+
+  await switchTab(page, "desktop", "Übersicht");
   await expect(
     page.getByRole("heading", { name: "Hoi Oskar Neu" }),
   ).toBeVisible();
-  await nav("Mitglieder").click();
-  await page.getByRole("button", { name: "Einladung erstellen" }).click();
-  await expect(page.getByText("demo-einladung", { exact: true })).toBeVisible();
+
+  // Persistenz über Reload prüfen
   await page.reload();
   await page.getByRole("button", { name: "Demo ausprobieren" }).click();
-  await nav("Guthaben").click();
-  await expect(page.getByText("Testgutschrift")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Hoi Oskar Neu" }),
+  ).toBeVisible();
+  await expect(page.getByText("Testfahrt", { exact: true })).toBeVisible();
+  await expect(page.locator(".balance-number")).toContainText("134");
+
+  // Demo-Reset stellt Ausgangszustand wieder her
+  await page
+    .locator(".demo-notice")
+    .getByRole("button", { name: "Zurücksetzen", exact: true })
+    .click();
+  await expect(page.getByRole("heading", { name: "Hoi Oskar" })).toBeVisible();
+  await expect(page.locator(".balance-number")).toContainText("149");
+  await expect(page.getByText("Testfahrt", { exact: true })).toHaveCount(0);
+
   expect(errors).toEqual([]);
 });
-test("iPhone-Abmessungen: alle Seiten bedienbar, Dialog und Offline-Hinweis", async ({
+
+test("Demo (Legacy/Tampered localStorage): Admin-Rolle und Reset-Anfragen werden beim Start bereinigt und persistiert", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+
+  const tampered = demoSnapshot();
+  tampered.members[0].role = "admin";
+  tampered.members[0].active = false;
+  tampered.members[1].role = "member";
+  tampered.members[2].role = "member";
+  tampered.reset_requests = [
+    {
+      id: "legacy-reset-max",
+      group_id: tampered.group.id,
+      member_id: "demo-2",
+      target_user_id: "user-2",
+      username: "max",
+      note: "Passwort vergessen",
+      status: "open",
+      requested_at: "2026-11-19T18:00:00.000Z",
+      resolved_at: null,
+    },
+  ];
+  tampered.feedback = [
+    {
+      id: "legacy-fb-own",
+      group_id: tampered.group.id,
+      member_id: "demo-0",
+      category: "idea",
+      message: "Eigenes Feedback bleibt",
+      page: "Übersicht",
+      created_at: "2026-11-19T19:00:00.000Z",
+    },
+    {
+      id: "legacy-fb-foreign",
+      group_id: tampered.group.id,
+      member_id: "demo-1",
+      category: "bug",
+      message: "Fremdes Feedback wird entfernt",
+      page: "Fahrten",
+      created_at: "2026-11-19T19:05:00.000Z",
+    },
+  ];
+  tampered.rides.unshift({
+    ...tampered.rides[0],
+    id: "legacy-own-ride",
+    member_id: "demo-0",
+    occurred_at: new Date().toISOString(),
+    note: "Bleibende Altfahrt",
+  });
+
+  await page.goto("/");
+  await page.evaluate((serialized) => {
+    localStorage.setItem("minutenclub-demo-v1", serialized);
+  }, JSON.stringify(tampered));
+
+  await page.goto("/?demo=1");
+  await expect(page.getByRole("heading", { name: "Hoi Oskar" })).toBeVisible();
+  await expect(
+    page.getByText("Bleibende Altfahrt", { exact: true }),
+  ).toBeVisible();
+
+  await assertNoAdminOrDevControls(page, "desktop", "Oskar");
+
+  const oskarRow = page
+    .locator(".member-row")
+    .filter({ hasText: "Oskar (du)" });
+  const augustRow = page.locator(".member-row").filter({ hasText: "August" });
+  const maxRow = page.locator(".member-row").filter({ hasText: "Max" });
+  await expect(oskarRow).toContainText("Mitglied");
+  await expect(oskarRow).not.toContainText("Administrator");
+  await expect(augustRow).toContainText("Administrator");
+  await expect(maxRow).toContainText("Mitglied");
+
+  const persistedRaw = await page.evaluate(() =>
+    localStorage.getItem("minutenclub-demo-v1"),
+  );
+  expect(persistedRaw).not.toBeNull();
+  const persisted = JSON.parse(persistedRaw!) as Snapshot;
+  expect(persisted.members.find((m) => m.user_id === DEMO_USER)).toMatchObject({
+    id: "demo-0",
+    role: "member",
+    active: true,
+  });
+  expect(persisted.members.find((m) => m.id === "demo-1")).toMatchObject({
+    role: "admin",
+    active: true,
+  });
+  expect(persisted.members.find((m) => m.id === "demo-2")).toMatchObject({
+    role: "member",
+  });
+  expect(persisted.reset_requests).toEqual([]);
+  expect(persisted.feedback?.map((f) => f.id)).toEqual(["legacy-fb-own"]);
+  expect(persisted.rides.some((r) => r.id === "legacy-own-ride")).toBe(true);
+
+  // Auch nach Reload bleibt der bereinigte Zustand ohne Admin-/Dev-Rechte bestehen
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Hoi Oskar" })).toBeVisible();
+  await assertNoGlobalAdminOrDevChrome(page, "desktop");
+  await expect(page.locator(".reset-alert-banner")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test("iPhone-Abmessungen: alle Seiten bedienbar, keine Admin-/Dev-Steuerung, Dialog, eigener Name und Offline-Hinweis", async ({
   browser,
 }) => {
   const context = await browser.newContext({
@@ -88,60 +418,38 @@ test("iPhone-Abmessungen: alle Seiten bedienbar, Dialog und Offline-Hinweis", as
   const page = await context.newPage();
   await page.goto("http://localhost:3100/?demo=1");
   await expect(page.getByRole("heading", { name: "Hoi Oskar" })).toBeVisible();
-  for (const tab of [
-    "Fahrten",
-    "Guthaben",
-    "Statistik",
-    "Mitglieder",
-    "Übersicht",
-  ]) {
-    await page
-      .locator(".mobile-nav")
-      .getByRole("button", { name: tab, exact: true })
-      .click();
-    expect(
-      await page.evaluate(() => document.documentElement.scrollWidth),
-    ).toBeLessThanOrEqual(390);
-  }
+
+  // Vollständige Negativprüfung + 390px-Überlaufprüfung über alle mobilen Tabs
+  await assertNoAdminOrDevControls(page, "mobile", "Oskar");
+
+  await switchTab(page, "mobile", "Übersicht");
   await page.getByRole("button", { name: "Fahrt eintragen" }).click();
   await page.getByLabel("Fahrzeit (Minuten)").fill("14");
   await page.getByLabel("Pause (Minuten)").fill("1");
   await page.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(page.locator("dialog")).toHaveCount(0);
+  await expect(page.locator(".balance-number")).toContainText("134");
+
   await context.setOffline(true);
   await expect(
     page.getByText("Du bist offline.", { exact: false }),
   ).toBeVisible();
   await context.setOffline(false);
+
+  await switchTab(page, "mobile", "Mitglieder");
   await page
-    .locator(".mobile-nav")
-    .getByRole("button", { name: "Guthaben", exact: true })
+    .getByRole("button", { name: "Name ändern von Oskar", exact: true })
     .click();
-  await page.getByRole("button", { name: "Guthaben aufladen" }).click();
-  await page.getByLabel("Minuten", { exact: true }).fill("100");
-  await page.getByRole("button", { name: "Nach CHF-Beitrag" }).click();
-  await page.getByLabel("Paketpreis (CHF)").fill("10");
-  await page.getByLabel("Oskar", { exact: true }).fill("3");
-  await page.getByLabel("August", { exact: true }).fill("3");
-  await page.getByLabel("Max", { exact: true }).fill("4");
+  await page.getByLabel("Anzeigename").fill("Oskar Mobil");
+  await page.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(page.locator("dialog")).toHaveCount(0);
   await expect(
-    page.locator(".split-person").filter({ hasText: "Max" }),
-  ).toContainText("40 Min.");
-  await page.getByRole("button", { name: "Speichern", exact: true }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page
-    .locator(".mobile-nav")
-    .getByRole("button", { name: "Mitglieder", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Name ändern von Max", exact: true })
-    .click();
-  await page.getByLabel("Anzeigename").fill("Max Neu");
-  await page.getByRole("button", { name: "Speichern", exact: true }).click();
-  await expect(page.getByText("Max Neu", { exact: true })).toBeVisible();
+    page.getByText("Oskar Mobil (du)", { exact: true }),
+  ).toBeVisible();
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
+
   await page.getByRole("button", { name: "Abmelden", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Demo ausprobieren" }),
@@ -149,62 +457,7 @@ test("iPhone-Abmessungen: alle Seiten bedienbar, Dialog und Offline-Hinweis", as
   await context.close();
 });
 
-test("Aufladen nach Beiträgen aktualisiert Home, Restguthaben und Kontingentdiagramm", async ({
-  page,
-}) => {
-  await page.goto("/?demo=1");
-  await expect(
-    page.getByRole("img", {
-      name: "Oskar: 51 von 200 Minuten verbraucht, 149 Minuten übrig.",
-    }),
-  ).toBeVisible();
-  await page
-    .locator(".sidebar .nav-item")
-    .filter({ hasText: "Guthaben" })
-    .click();
-  await page.getByRole("button", { name: "Guthaben aufladen" }).click();
-  await page.getByLabel("Minuten", { exact: true }).fill("600");
-  await page.getByRole("button", { name: "Nach CHF-Beitrag" }).click();
-  await page.getByLabel("Paketpreis (CHF)").fill("90");
-  await page.getByLabel("Oskar", { exact: true }).fill("30");
-  await page.getByLabel("August", { exact: true }).fill("45");
-  // Noch nicht vollständig finanziert: keine Buchung.
-  await page.getByRole("button", { name: "Speichern", exact: true }).click();
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await page.getByLabel("Max", { exact: true }).fill("15");
-  await expect(
-    page.locator(".split-person").filter({ hasText: "Oskar" }),
-  ).toContainText("200 Min.");
-  await expect(
-    page.locator(".split-person").filter({ hasText: "August" }),
-  ).toContainText("300 Min.");
-  await expect(
-    page.locator(".split-person").filter({ hasText: "Max" }),
-  ).toContainText("100 Min.");
-  await page.getByRole("button", { name: "Speichern", exact: true }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page
-    .locator(".sidebar .nav-item")
-    .filter({ hasText: "Übersicht" })
-    .click();
-  await expect(page.locator(".balance-number")).toContainText("349");
-  await expect(
-    page.getByRole("img", {
-      name: "Oskar: 51 von 400 Minuten verbraucht, 349 Minuten übrig.",
-    }),
-  ).toBeVisible();
-  await expect(
-    page.locator(".metric-card").filter({ hasText: "Von dir verbraucht" }),
-  ).toContainText("51");
-  await expect(
-    page.locator(".metric-card").filter({ hasText: "Gemeinsamer Bestand" }),
-  ).toContainText(/1['’]043/);
-  await expect(
-    page.locator(".crew-row").filter({ hasText: "August" }),
-  ).toContainText("447");
-});
-
-test("Onboarding, Hell/Dunkel-Modus, Feedback-Vorschau und Dott-Entsperrung mit Einmal-Standort", async ({
+test("Onboarding, Hell/Dunkel-Modus, Feedback-Vorschau, eigenes Passwort und Dott-Entsperrung mit Einmal-Standort", async ({
   browser,
 }) => {
   const context = await browser.newContext({
@@ -345,10 +598,7 @@ test("Onboarding, Hell/Dunkel-Modus, Feedback-Vorschau und Dott-Entsperrung mit 
   await expect(page.getByText("Zürich HB → ETH Polyterrasse")).toBeVisible();
 
   // 3. Neue Uhrzeit- & Zielstatistik auf iPhone-Breite prüfen
-  await page
-    .locator(".mobile-nav")
-    .getByRole("button", { name: "Statistik", exact: true })
-    .click();
+  await switchTab(page, "mobile", "Statistik");
   await expect(
     page.getByRole("heading", {
       name: "Um welche Uhrzeit seid ihr unterwegs?",
@@ -378,28 +628,32 @@ test("Onboarding, Hell/Dunkel-Modus, Feedback-Vorschau und Dott-Entsperrung mit 
   ).toBeVisible();
   await page.getByRole("button", { name: "Fertig" }).click();
 
-  // 5. Passwort- & Zurücksetzungs-Dashboard auf iPhone-Breite prüfen
-  await page
-    .locator(".mobile-nav")
-    .getByRole("button", { name: "Mitglieder", exact: true })
-    .click();
+  // 5. Passwort-Dashboard für normale Mitglieder (@oskar) auf iPhone-Breite prüfen
+  await switchTab(page, "mobile", "Mitglieder");
   await expect(
     page.getByRole("heading", {
       name: "Passwort- & Zurücksetzungs-Dashboard",
     }),
   ).toBeVisible();
   await expect(
-    page.locator(".pw-reset-row").getByText("@max", { exact: true }),
+    page.getByText("Ändere hier jederzeit dein eigenes Passwort.", {
+      exact: true,
+    }),
   ).toBeVisible();
+  await expect(page.locator(".pw-reset-row")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Mitglied direkt anlegen" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Eigenes Passwort ändern (@oskar)" }),
+  ).toBeVisible();
+  await page.locator("#own-new-pw").fill("MobilPass2026");
+  await page.locator("#own-confirm-pw").fill("MobilPass2026");
   await page
-    .locator(".pw-reset-row")
-    .getByRole("button", { name: "Neues Passwort setzen" })
-    .click();
-  await page
-    .getByRole("button", { name: "Passwort speichern", exact: true })
+    .getByRole("button", { name: "Eigenes Passwort speichern" })
     .click();
   await expect(
-    page.getByText(/Neues Passwort für Max gespeichert/),
+    page.getByText("Dein Passwort wurde aktualisiert."),
   ).toBeVisible();
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
@@ -450,52 +704,6 @@ test("Rechtliches: Datenschutzerklärung, Nutzungsbedingungen und Impressum auf 
   await context.close();
 });
 
-test("Paket nach Teilnehmenden und Minutenbedarf aufteilen", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/?demo=1");
-  await page
-    .locator(".mobile-nav")
-    .getByRole("button", { name: "Guthaben", exact: true })
-    .click();
-  const open = page.getByRole("button", { name: "Guthaben aufladen" });
-  await open.click();
-  const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("Minuten", { exact: true }).fill("100");
-  await dialog.getByLabel("Paketpreis (CHF)").fill("10");
-  await expect(
-    dialog.getByRole("button", { name: "Fair aufteilen" }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await dialog.getByRole("checkbox", { name: "August" }).uncheck();
-  await expect(dialog.getByText(/2 von 3 · je 1\/2/)).toBeVisible();
-  await expect(
-    dialog.locator(".split-person").filter({ hasText: "Max" }),
-  ).toContainText(/1\/2[\s\S]*50 Min.*5\.00/);
-  await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
-  await expect(
-    page.locator(".account-item").filter({ hasText: "Max" }),
-  ).toContainText("197");
-  await open.click();
-  await dialog.getByLabel("Minuten", { exact: true }).fill("100");
-  await dialog.getByLabel("Paketpreis (CHF)").fill("10");
-  await dialog.getByRole("button", { name: "Nach Minutenbedarf" }).click();
-  await dialog.getByLabel("Minutenbedarf von Oskar").fill("70");
-  await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
-  await expect(dialog).toBeVisible();
-  await dialog.getByLabel("Minutenbedarf von August").fill("30");
-  await expect(
-    dialog.locator(".split-person").filter({ hasText: "Oskar" }),
-  ).toContainText(/70 Min.*7\.00/);
-  await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
-  await expect(
-    page.locator(".account-item").filter({ hasText: "Oskar" }),
-  ).toContainText("269");
-  await expect(
-    page.locator(".account-item").filter({ hasText: "August" }),
-  ).toContainText("177");
-});
-
 test("Gemeinsame Fahrt auf dem gleichen Scooter während aktiver Fahrt auswählen und Zeit aufteilen", async ({
   page,
 }) => {
@@ -536,16 +744,10 @@ test("Gemeinsame Fahrt auf dem gleichen Scooter während aktiver Fahrt auswähle
   await page.getByRole("button", { name: "Schliessen", exact: true }).click();
 
   // In anderen Tab wechseln -> schwebende In-App Dynamic Pill erscheint mit Timer
-  await page
-    .locator(".mobile-nav")
-    .getByRole("button", { name: "Fahrten", exact: true })
-    .click();
+  await switchTab(page, "mobile", "Fahrten");
   await expect(page.locator(".dynamic-pill-bar")).toBeVisible();
   await expect(page.locator(".dynamic-pill-bar")).toContainText("Oskar & Max");
-  await page
-    .locator(".mobile-nav")
-    .getByRole("button", { name: "Übersicht", exact: true })
-    .click();
+  await switchTab(page, "mobile", "Übersicht");
 
   // 3. Fahrt abschliessen -> Max ist bereits vorausgewählt, 14 + 1 = 15 Min. -> je 7,5 Min.
   await page.getByRole("button", { name: "Fahrt abschliessen" }).click();
@@ -577,17 +779,14 @@ test("Gemeinsame Fahrt auf dem gleichen Scooter während aktiver Fahrt auswähle
   ).toBeLessThanOrEqual(390);
 });
 
-test("Admin Dev-Dashboard (GPS-Telemetrie, 100-m-Crew-Orte) und Strecken-Bestzeiten auf iPhone-Breite", async ({
+test("Statistik & Strecken-Bestzeiten auf iPhone-Breite ohne Dev-Dashboard-Zugang", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/?demo=1");
 
-  // 1. Strecken-Bestzeiten in Statistik prüfen
-  await page
-    .locator(".mobile-nav")
-    .getByRole("button", { name: "Statistik", exact: true })
-    .click();
+  // 1. Strecken-Bestzeiten in Statistik für normale Mitglieder prüfen
+  await switchTab(page, "mobile", "Statistik");
   await expect(
     page.getByRole("heading", {
       name: "Strecken-Bestzeiten · Wer ist am schnellsten?",
@@ -595,23 +794,11 @@ test("Admin Dev-Dashboard (GPS-Telemetrie, 100-m-Crew-Orte) und Strecken-Bestzei
   ).toBeVisible();
   await expect(page.locator(".route-record-card").first()).toBeVisible();
 
-  // 2. Admin Dev-Dashboard über Topbar öffnen
-  await page.getByRole("button", { name: "Dev-Dashboard öffnen" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Fahrt-Telemetrie & GPS-Inspektor" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Crew-Orte & 100-m-Adresszonen" }),
-  ).toBeVisible();
-
-  // 3. Neuen Crew-Ort mit Koordinaten anlegen
-  await page.getByLabel("Name in Statistik").fill("Limmat-Spot");
-  await page.getByLabel("Breitengrad (Lat)").fill("47.372");
-  await page.getByLabel("Längengrad (Lng)").fill("8.541");
-  await page.getByRole("button", { name: "Crew-Ort speichern" }).click();
-  await expect(
-    page.locator(".dev-place-card").filter({ hasText: "Limmat-Spot" }),
-  ).toBeVisible();
+  // 2. Keinerlei Dev-Dashboard-Zugang in Topbar, Statistik oder Mitglieder-Einstellungen
+  await assertNoGlobalAdminOrDevChrome(page, "mobile");
+  await switchTab(page, "mobile", "Mitglieder");
+  await assertNoGlobalAdminOrDevChrome(page, "mobile");
+  await expect(page.getByText("Admin Dev-Dashboard")).toHaveCount(0);
 
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),

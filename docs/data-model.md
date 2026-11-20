@@ -45,7 +45,7 @@ Interne Gutschriften sind frei wählbare positive Ganzminutenbeträge bis zur te
 - Alle Mutationen prüfen zuerst die aktive Mitgliedschaft und sperren die Gruppe für die kurze Transaktion. Eine fehlgeschlagene Aktion hinterlässt keine Teilbuchungen oder reservierten Idempotenzschlüssel.
 - Korrekturen einer Fahrt erfolgen durch Storno und neue eigene Erfassung. Direkte Änderungen oder Löschungen im Journal sind nicht zulässig.
 
-Version 1 bietet keine negativen administrativen Guthabenkorrekturen, Minutenübertragungen oder Paketkorrekturen. Diese benötigen eigene Gegenbuchungsfunktionen und sind als Erweiterung vorgemerkt. Im täglichen Betrieb echte Käufe und Gutschriften vor dem Speichern prüfen; Testeinträge gehören in ein separates Projekt oder die Demo.
+Version 1 bietet keine negativen administrativen Guthabenkorrekturen, Minutenübertragungen oder Paketkorrekturen. Diese benötigen eigene Gegenbuchungsfunktionen und sind als Erweiterung vorgemerkt. Im täglichen Betrieb echte Käufe und Gutschriften vor dem Speichern prüfen; Testeinträge für Admin-Buchungen gehören in ein separates Testprojekt.
 
 ## Aufteilung eines Pakets
 

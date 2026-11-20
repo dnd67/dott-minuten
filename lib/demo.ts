@@ -25,7 +25,7 @@ export function demoSnapshot(): Snapshot {
     group_id: gid,
     user_id: i === 0 ? DEMO_USER : `user-${i}`,
     display_name: name,
-    role: i === 0 ? ("admin" as const) : ("member" as const),
+    role: i === 1 ? ("admin" as const) : ("member" as const),
     active: true,
   }));
   const seed: [
@@ -276,20 +276,7 @@ export function demoSnapshot(): Snapshot {
         password_updated_at: ago(14),
       },
     ],
-    reset_requests: [
-      {
-        id: "reset-demo-1",
-        group_id: gid,
-        member_id: "demo-2",
-        target_user_id: "user-2",
-        username: "max",
-        note: "Neues iPhone – Passwort vergessen",
-        status: "open",
-        requested_at: ago(0, 9),
-        resolved_at: null,
-        resolved_by_member_id: null,
-      },
-    ],
+    reset_requests: [],
     places: [
       {
         id: "demo-place-1",
@@ -328,23 +315,242 @@ export function demoSnapshot(): Snapshot {
   };
 }
 
+const ADMIN_ACTIONS: ReadonlySet<Action> = new Set([
+  "credit_minutes",
+  "record_topup",
+  "record_package",
+  "void_ride",
+  "update_member",
+  "create_invite",
+  "revoke_invites",
+  "dismiss_password_reset",
+  "upsert_group_place",
+  "deactivate_group_place",
+]);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === "string" && value.trim().length > 0;
+
+/**
+ * Stellt sicher, dass ein geladener Demo-Snapshot (z. B. aus älterem oder
+ * verändertem localStorage) den Rechten eines normalen angemeldeten Mitglieds
+ * entspricht: Oskar bleibt aktives Mitglied ohne Admin-/Dev-Rechte, mindestens
+ * ein anderes aktives Mitglied bleibt Admin, und Admin-only Reset-Anfragen
+ * werden entfernt.
+ */
+export function normalizeDemoSnapshot(raw: Snapshot): Snapshot {
+  const fallback = demoSnapshot();
+  if (!isRecord(raw)) return fallback;
+
+  const data = structuredClone(raw) as Snapshot;
+
+  if (
+    !isRecord(data.group) ||
+    !isNonEmptyString(data.group.id) ||
+    !isNonEmptyString(data.group.name)
+  ) {
+    data.group = fallback.group;
+  }
+
+  const rawMembers = Array.isArray(data.members)
+    ? data.members
+        .filter(
+          (m): m is Snapshot["members"][number] =>
+            isRecord(m) &&
+            isNonEmptyString(m.id) &&
+            isNonEmptyString(m.user_id) &&
+            isNonEmptyString(m.display_name),
+        )
+        .map((m) => ({
+          id: m.id.trim(),
+          group_id: data.group.id,
+          user_id: m.user_id.trim(),
+          display_name: m.display_name.trim(),
+          role: m.role === "admin" ? ("admin" as const) : ("member" as const),
+          active: Boolean(m.active),
+        }))
+    : [];
+
+  if (rawMembers.length === 0) {
+    data.members = fallback.members;
+  } else {
+    const demoEntries = rawMembers.filter((m) => m.user_id === DEMO_USER);
+    const chosenDemo =
+      demoEntries.find((m) => m.id === "demo-0") ??
+      demoEntries[0] ??
+      fallback.members[0];
+    const demoMember = {
+      ...chosenDemo,
+      group_id: data.group.id,
+      role: "member" as const,
+      active: true,
+    };
+
+    const seenIds = new Set<string>([demoMember.id]);
+    const dedupOthers: Snapshot["members"] = [];
+    for (const m of rawMembers) {
+      if (m.user_id === DEMO_USER || seenIds.has(m.id)) continue;
+      seenIds.add(m.id);
+      dedupOthers.push(m);
+    }
+
+    data.members = [demoMember, ...dedupOthers];
+  }
+
+  const demoMember = data.members.find((m) => m.user_id === DEMO_USER)!;
+
+  data.rides = Array.isArray(data.rides)
+    ? data.rides.filter(
+        (r): r is Snapshot["rides"][number] =>
+          isRecord(r) &&
+          isNonEmptyString(r.id) &&
+          isNonEmptyString(r.member_id) &&
+          isNonEmptyString(r.occurred_at) &&
+          Number.isFinite(Date.parse(r.occurred_at)) &&
+          typeof r.duration_seconds === "number" &&
+          typeof r.pause_seconds === "number" &&
+          typeof r.charged_seconds === "number",
+      )
+    : fallback.rides;
+
+  data.entries = Array.isArray(data.entries)
+    ? data.entries.filter(
+        (e): e is Snapshot["entries"][number] =>
+          isRecord(e) &&
+          isNonEmptyString(e.id) &&
+          isNonEmptyString(e.member_id) &&
+          typeof e.seconds === "number" &&
+          isNonEmptyString(e.created_at) &&
+          Number.isFinite(Date.parse(e.created_at)),
+      )
+    : fallback.entries;
+
+  data.packages = Array.isArray(data.packages)
+    ? data.packages.filter(
+        (p): p is Snapshot["packages"][number] =>
+          isRecord(p) &&
+          isNonEmptyString(p.id) &&
+          typeof p.seconds === "number" &&
+          typeof p.price_rappen === "number" &&
+          isNonEmptyString(p.purchased_at) &&
+          Number.isFinite(Date.parse(p.purchased_at)),
+      )
+    : fallback.packages;
+
+  data.contributions = Array.isArray(data.contributions)
+    ? data.contributions.filter(
+        (c): c is NonNullable<Snapshot["contributions"]>[number] =>
+          isRecord(c) &&
+          isNonEmptyString(c.id) &&
+          isNonEmptyString(c.package_id) &&
+          isNonEmptyString(c.member_id),
+      )
+    : (fallback.contributions ?? []);
+
+  data.places = Array.isArray(data.places)
+    ? data.places.filter(
+        (p): p is NonNullable<Snapshot["places"]>[number] =>
+          isRecord(p) &&
+          isNonEmptyString(p.id) &&
+          isNonEmptyString(p.label) &&
+          validCoords(p.lat, p.lng),
+      )
+    : (fallback.places ?? []);
+
+  const nowIso = new Date().toISOString();
+  data.accounts = Array.isArray(data.accounts)
+    ? data.accounts
+        .filter(
+          (a): a is NonNullable<Snapshot["accounts"]>[number] =>
+            isRecord(a) &&
+            isNonEmptyString(a.user_id) &&
+            isNonEmptyString(a.username),
+        )
+        .map((a) => ({
+          user_id: a.user_id.trim(),
+          username: a.username.trim(),
+          password_updated_at:
+            isNonEmptyString(a.password_updated_at) &&
+            Number.isFinite(Date.parse(a.password_updated_at))
+              ? a.password_updated_at
+              : nowIso,
+        }))
+    : (fallback.accounts ?? []);
+
+  if (!data.accounts.some((a) => a.user_id === DEMO_USER)) {
+    const defaultOskar = fallback.accounts?.find(
+      (a) => a.user_id === DEMO_USER,
+    );
+    if (defaultOskar) data.accounts.unshift(defaultOskar);
+  }
+
+  const others = data.members.filter((m) => m.user_id !== DEMO_USER);
+  if (others.length === 0) {
+    const fallbackAdmin =
+      fallback.members.find(
+        (m) => m.user_id !== DEMO_USER && m.id !== demoMember.id,
+      ) ?? fallback.members[1];
+    data.members.push({
+      ...fallbackAdmin,
+      group_id: data.group.id,
+      role: "admin",
+      active: true,
+    });
+  } else if (!others.some((m) => m.active && m.role === "admin")) {
+    const preferred =
+      others.find((m) => m.id === "demo-1" && m.active) ??
+      others.find((m) => m.active) ??
+      others.find((m) => m.id === "demo-1") ??
+      others[0];
+    preferred.role = "admin";
+    preferred.active = true;
+  }
+
+  data.feedback = Array.isArray(data.feedback)
+    ? data.feedback.filter(
+        (f): f is NonNullable<Snapshot["feedback"]>[number] =>
+          isRecord(f) &&
+          isNonEmptyString(f.id) &&
+          f.member_id === demoMember.id &&
+          isNonEmptyString(f.message) &&
+          isNonEmptyString(f.created_at) &&
+          Number.isFinite(Date.parse(f.created_at)),
+      )
+    : [];
+  data.reset_requests = [];
+
+  return data;
+}
+
 export function demoAction(
   current: Snapshot,
   action: Action,
   args: RpcArgs,
 ): Snapshot {
   const data = structuredClone(current);
+  const actor = data.members.find((m) => m.user_id === DEMO_USER && m.active);
+  if (!actor) throw new Error("Keine Berechtigung für diese Gruppe.");
+  const isAdmin = actor.role === "admin";
+  if (ADMIN_ACTIONS.has(action) && !isAdmin) {
+    throw new Error("Keine Berechtigung für diese Gruppe.");
+  }
   const id = String(args.p_request_id);
   const now = new Date().toISOString();
   if (action === "record_ride") {
     if (data.rides.some((r) => r.id === id)) return data;
     const rawCoRiders = Array.isArray(args.p_co_rider_ids)
-      ? args.p_co_rider_ids.map(String)
+      ? args.p_co_rider_ids
+          .filter((x) => x !== null && x !== undefined)
+          .map(String)
+          .filter(Boolean)
       : [];
     const shares = splitRideSeconds(
       Number(args.p_drive_minutes),
       Number(args.p_pause_minutes),
-      ["demo-0", ...rawCoRiders],
+      [actor.id, ...rawCoRiders],
     );
     if (
       shares.some(
@@ -364,7 +570,7 @@ export function demoAction(
     const isShared = shares.length > 1;
     const sharedGroupId = isShared ? id : null;
     for (const share of shares) {
-      const rideId = share.member_id === "demo-0" ? id : crypto.randomUUID();
+      const rideId = share.member_id === actor.id ? id : crypto.randomUUID();
       data.rides.push({
         id: rideId,
         group_id: gid,
@@ -483,7 +689,7 @@ export function demoAction(
       for (const s of targets) {
         s.voided_at = now;
         s.void_reason = String(args.p_reason);
-        s.voided_by_member_id = "demo-0";
+        s.voided_by_member_id = actor.id;
         data.entries.push({
           id: s.id === r.id ? id : crypto.randomUUID(),
           group_id: gid,
@@ -497,11 +703,14 @@ export function demoAction(
       }
     }
   } else if (action === "rename_member") {
+    const m = data.members.find((m) => m.id === args.p_member_id);
+    if (!m) throw new Error("Mitglied nicht gefunden.");
+    if (m.id !== actor.id && !isAdmin) {
+      throw new Error("Du darfst nur deinen eigenen Namen ändern.");
+    }
     const name = String(args.p_display_name).trim();
     if (!name || name.length > 60)
       throw new Error("Bitte einen Namen mit 1 bis 60 Zeichen eingeben.");
-    const m = data.members.find((m) => m.id === args.p_member_id);
-    if (!m) throw new Error("Mitglied nicht gefunden.");
     m.display_name = name;
   } else if (action === "update_member") {
     const m = data.members.find((m) => m.id === args.p_member_id);
@@ -528,7 +737,7 @@ export function demoAction(
     data.feedback.unshift({
       id,
       group_id: gid,
-      member_id: "demo-0",
+      member_id: actor.id,
       category,
       message,
       page: String(args.p_page ?? ""),
@@ -541,7 +750,7 @@ export function demoAction(
     if (req) {
       req.status = "dismissed";
       req.resolved_at = now;
-      req.resolved_by_member_id = "demo-0";
+      req.resolved_by_member_id = actor.id;
     }
   } else if (action === "upsert_group_place") {
     data.places ??= [];

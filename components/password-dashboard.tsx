@@ -96,6 +96,7 @@ export function PasswordDashboard({
   };
 
   function startSetPassword(member: Member) {
+    if (!admin) return;
     setError("");
     setIssued(null);
     setTargetMember(member);
@@ -105,7 +106,7 @@ export function PasswordDashboard({
 
   async function submitMemberPassword(e: React.FormEvent) {
     e.preventDefault();
-    if (!targetMember || isWorking) return;
+    if (!admin || !targetMember || isWorking) return;
     setError("");
     try {
       const cleanPw = validatePassword(memberPassword);
@@ -133,7 +134,7 @@ export function PasswordDashboard({
 
   async function submitCreateAccount(e: React.FormEvent) {
     e.preventDefault();
-    if (isWorking) return;
+    if (!admin || isWorking) return;
     setError("");
     try {
       const cleanUser = validateUsername(newUsername);
@@ -248,7 +249,7 @@ export function PasswordDashboard({
           </div>
         )}
 
-        {issued && (
+        {admin && issued && (
           <div className="invite-box credential-box" role="status">
             <div className="credential-box-header">
               <strong>{issued.title}</strong>
