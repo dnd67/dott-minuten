@@ -1,7 +1,14 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, LocateFixed, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  LocateFixed,
+  Smartphone,
+  X,
+} from "lucide-react";
 import { type TourFeature } from "@/lib/onboarding";
 import { TourPreview } from "./tour-preview";
 
@@ -58,6 +65,7 @@ type Props = {
   onClose: () => void;
   onAcknowledge?: (ids: TourFeature[]) => Promise<void>;
   onStartUnlock?: () => void;
+  onOpenIslandGuide?: () => void;
 };
 
 export function OnboardingModal({
@@ -67,9 +75,11 @@ export function OnboardingModal({
   onClose,
   onAcknowledge,
   onStartUnlock,
+  onOpenIslandGuide,
 }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
+  const touchOrigin = useRef<{ x: number; y: number } | null>(null);
   const locked = useRef(false);
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -97,7 +107,7 @@ export function OnboardingModal({
     dialog.current?.scrollTo(0, 0);
   }, [step]);
 
-  async function close(animate: boolean, unlock = false) {
+  async function close(animate: boolean, action?: () => void) {
     const node = dialog.current;
     if (!node || node.dataset.closing) return;
     node.dataset.closing = "true";
@@ -105,19 +115,29 @@ export function OnboardingModal({
       await Promise.allSettled(node.getAnimations().map((a) => a.finished));
     if (!node.isConnected) return;
     onClose();
-    if (unlock) onStartUnlock?.();
+    action?.();
   }
 
-  async function advance(animate: boolean, skip = false, unlock = false) {
-    if (locked.current) return;
+  async function navigate(
+    next: number,
+    animate = false,
+    skip = false,
+    action?: () => void,
+  ) {
+    if (locked.current || next === step || next < 0) return;
+    if (next < step) {
+      setError("");
+      setStep(next);
+      return;
+    }
     locked.current = true;
     setSaving(true);
     setError("");
     try {
       await onAcknowledge?.(skip ? tour.features : [feature]);
       if (!dialog.current || dialog.current.dataset.closing) return;
-      if (skip || last) await close(animate, unlock);
-      else setStep(step + 1);
+      if (next >= tour.features.length) await close(animate, action);
+      else setStep(next);
     } catch {
       setError(
         "Dein Fortschritt konnte nicht gespeichert werden. Versuch es nochmals oder schliesse die Tour für diesen Besuch.",
@@ -134,6 +154,21 @@ export function OnboardingModal({
       className="entry-dialog onboarding-dialog"
       data-motion
       aria-labelledby="onboarding-title"
+      onKeyDown={(e) => {
+        if (
+          e.target instanceof HTMLElement &&
+          e.target.closest(".segmented-control")
+        )
+          return;
+        if (e.key === "ArrowRight" && !last) {
+          e.preventDefault();
+          void navigate(step + 1);
+        }
+        if (e.key === "ArrowLeft" && step > 0) {
+          e.preventDefault();
+          void navigate(step - 1);
+        }
+      }}
       onCancel={(e) => {
         e.preventDefault();
         void close(false);
@@ -163,13 +198,40 @@ export function OnboardingModal({
             <X size={18} />
           </button>
         </div>
-        <div className="tour-progress" aria-hidden="true">
+        <div className="tour-progress" role="group" aria-label="Tour-Schritte">
           {tour.features.map((id, i) => (
-            <i key={id} data-current={i <= step || undefined} />
+            <button
+              key={id}
+              type="button"
+              aria-label={`Zu Schritt ${i + 1}: ${cards[id].title}`}
+              aria-current={i === step ? "step" : undefined}
+              disabled={saving}
+              data-current={i <= step || undefined}
+              onClick={() => void navigate(i)}
+            />
           ))}
         </div>
-        <div className="tour-slide" key={feature}>
-          <TourPreview feature={feature} />
+        <div
+          className="tour-slide"
+          key={feature}
+          onTouchStart={(e) => {
+            const t = e.changedTouches[0];
+            if (t) touchOrigin.current = { x: t.clientX, y: t.clientY };
+          }}
+          onTouchEnd={(e) => {
+            const start = touchOrigin.current,
+              t = e.changedTouches[0];
+            touchOrigin.current = null;
+            if (!t || !start) return;
+            const dx = t.clientX - start.x,
+              dy = t.clientY - start.y;
+            if (Math.abs(dx) >= 52 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+              if (dx < 0 && !last) void navigate(step + 1);
+              if (dx > 0 && step > 0) void navigate(step - 1);
+            }
+          }}
+        >
+          <TourPreview feature={feature} memberName={memberName} />
           <div className="tour-copy">
             <span className="eyebrow">
               {feature === "minute-pass" && memberName
@@ -183,12 +245,38 @@ export function OnboardingModal({
           </div>
         </div>
         {error && <p role="alert">{error}</p>}
+        {last &&
+          (feature === "appearance" || feature === "live-cockpit") &&
+          onOpenIslandGuide && (
+            <button
+              type="button"
+              className="button secondary wide"
+              disabled={saving}
+              onClick={(e) =>
+                void navigate(
+                  tour.features.length,
+                  e.detail > 0,
+                  false,
+                  onOpenIslandGuide,
+                )
+              }
+            >
+              <Smartphone size={17} /> Dynamic Island jetzt einrichten
+            </button>
+          )}
         {last && feature === "appearance" && onStartUnlock && (
           <button
             type="button"
             className="button secondary wide"
             disabled={saving}
-            onClick={(e) => void advance(e.detail > 0, false, true)}
+            onClick={(e) =>
+              void navigate(
+                tour.features.length,
+                e.detail > 0,
+                false,
+                onStartUnlock,
+              )
+            }
           >
             <LocateFixed size={17} /> Direkt ersten Dott entsperren
           </button>
@@ -199,10 +287,7 @@ export function OnboardingModal({
               type="button"
               className="button secondary"
               disabled={saving}
-              onClick={() => {
-                setError("");
-                setStep(step - 1);
-              }}
+              onClick={() => void navigate(step - 1)}
             >
               <ArrowLeft size={16} /> Zurück
             </button>
@@ -211,7 +296,9 @@ export function OnboardingModal({
               type="button"
               className="text-link"
               disabled={saving}
-              onClick={(e) => void advance(e.detail > 0, true)}
+              onClick={(e) =>
+                void navigate(tour.features.length, e.detail > 0, true)
+              }
             >
               Überspringen
             </button>
@@ -220,7 +307,7 @@ export function OnboardingModal({
             type="button"
             className="button primary"
             disabled={saving}
-            onClick={(e) => void advance(e.detail > 0)}
+            onClick={(e) => void navigate(step + 1, e.detail > 0)}
           >
             {last ? (
               <>

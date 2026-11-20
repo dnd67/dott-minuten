@@ -251,17 +251,34 @@ test("Onboarding, Hell/Dunkel-Modus, Feedback-Vorschau und Dott-Entsperrung mit 
   await page.getByRole("button", { name: "22 Min." }).click();
   await page.getByRole("button", { name: "3 Min." }).click();
   await expect(page.locator(".sim-pass-preview")).toContainText("25 Min.");
-  for (const title of [
-    "Ein Paket, eure Anteile",
-    "Eine Fahrt gemeinsam abrechnen",
-    "Deine Fahrt bleibt im Blick",
-    "Eure Strecken und Bestzeiten",
-    "Dein Zugang zur Crew",
-    "Bereit für unterwegs",
-  ]) {
-    await page.getByRole("button", { name: "Weiter" }).click();
-    await expect(page.getByRole("heading", { name: title })).toBeVisible();
-  }
+  await page.keyboard.press("ArrowRight");
+  await expect(
+    page.getByRole("heading", { name: "Ein Paket, eure Anteile" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Nach CHF", exact: true }).click();
+  await expect(page.locator(".ob-split-legend")).toContainText("150 Min.");
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+  await page.getByRole("button", { name: "Weiter", exact: true }).click();
+  await page.getByRole("button", { name: "+ Max" }).click();
+  await expect(page.locator(".ob-rider-avatars")).toContainText("je 7,5 Min.");
+  await page.getByRole("button", { name: "Weiter", exact: true }).click();
+  await expect(page.locator(".ob-island-clock")).toHaveText(/\d{2}:\d{2}/);
+  await page.getByRole("button", { name: "Kompakt", exact: true }).click();
+  await expect(page.locator(".ob-island-capsule")).toHaveClass(/compact/);
+  await page.getByRole("button", { name: "Erweitert", exact: true }).click();
+  await expect(page.locator(".ob-island-capsule")).toHaveClass(/expanded/);
+  await page.getByRole("button", { name: "Weiter", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Bellevue → Seefeld", exact: true })
+    .click();
+  await expect(page.locator(".ob-podium-bars")).toContainText("5 Min.");
+  await page.getByRole("button", { name: "Weiter", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Dein Zugang zur Crew" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Weiter", exact: true }).click();
   // Darstellungsmodus im Onboarding auf Hell schalten
   await page.getByRole("button", { name: "Hell", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
@@ -614,7 +631,7 @@ test("Bestehende Konten sehen nur Neuerungen und setzen eine unterbrochene Tour 
     "Ein Paket, eure Anteile",
   );
   await dialog.getByRole("button", { name: "Minutenbedarf" }).click();
-  await expect(dialog.getByText("Du · 70 Min.")).toBeVisible();
+  await expect(dialog.locator(".ob-split-legend")).toContainText("210 Min.");
   expect(
     await dialog
       .locator(".tour-slide")
@@ -623,7 +640,7 @@ test("Bestehende Konten sehen nur Neuerungen und setzen eine unterbrochene Tour 
   expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
     true,
   );
-  await dialog.getByRole("button", { name: "Weiter" }).click();
+  await dialog.getByRole("button", { name: "Weiter", exact: true }).click();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await page.reload();
@@ -636,7 +653,7 @@ test("Bestehende Konten sehen nur Neuerungen und setzen eine unterbrochene Tour 
     "Dein Zugang zur Crew",
     "Deine Werkzeuge als Admin",
   ]) {
-    await dialog.getByRole("button", { name: "Weiter" }).click();
+    await dialog.getByRole("button", { name: "Weiter", exact: true }).click();
     await expect(dialog.getByRole("heading")).toHaveText(title);
   }
   await dialog.getByRole("button", { name: "Alles klar" }).click();
@@ -674,13 +691,26 @@ test("Ein einzelnes neues Feature erscheint auf dem Mitgliedskonto ohne Admin-Ka
     "Deine Fahrt bleibt im Blick",
   );
   await expect(dialog.getByLabel("Schritt 1 von 1")).toBeVisible();
-  await dialog.getByRole("button", { name: "Anderer Tab" }).click();
-  await expect(dialog.locator(".tour-live")).toHaveAttribute(
-    "data-compact",
-    "true",
-  );
+  await dialog.getByRole("button", { name: "Kompakt" }).click();
+  await expect(dialog.locator(".ob-island-capsule")).toHaveClass(/compact/);
   await dialog.getByRole("button", { name: "Alles klar" }).click();
   await page.reload();
   await page.getByRole("button", { name: "Fahrt eintragen" }).click();
   await expect(page.getByLabel("Fahrzeit (Minuten)")).toBeVisible();
+});
+
+test("Die abgeschlossene Fünf-Schritt-Tour wird in der Demo übernommen", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.evaluate(() =>
+    localStorage.setItem("minutenclub-onboarding-done-v2", "1"),
+  );
+  await page.goto("/?demo=1");
+  await expect(page.getByRole("dialog").getByRole("heading")).toHaveText(
+    "Dein Zugang zur Crew",
+  );
+  await expect(
+    page.getByLabel("Schritt 1 von 2", { exact: true }),
+  ).toBeVisible();
 });

@@ -2081,6 +2081,7 @@ export function Dashboard(p: Props) {
           groupName={data.group.name}
           memberName={me?.display_name}
           onClose={() => setTour(null)}
+          onOpenIslandGuide={() => setIslandGuideOpen({ motion: true })}
           onAcknowledge={(ids) => acknowledgeFeatures(p.userId, p.demo, ids)}
           onStartUnlock={
             me && !activeUnlock

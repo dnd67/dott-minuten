@@ -15,6 +15,16 @@ export type TourFeature = (typeof tourFeatures)[number];
 export const availableFeatures = (admin: boolean) =>
   tourFeatures.filter((id) => admin || id !== "admin-tools");
 
+// The two previous tours stored one browser-wide completion flag each.
+const originalTour = ["minute-pass", "appearance"] satisfies TourFeature[];
+const animatedTour = [
+  ...originalTour,
+  "package-splits",
+  "shared-rides",
+  "live-cockpit",
+  "route-records",
+] satisfies TourFeature[];
+const previousTourKey = "minutenclub-onboarding-done-v2";
 const demoKey = "minutenclub-demo-tour-v2";
 function demoSeen(): string[] {
   try {
@@ -26,7 +36,12 @@ function demoSeen(): string[] {
     const returning =
       localStorage.getItem("minutenclub-onboarding-done-v1") === "1" ||
       localStorage.getItem("minutenclub-demo-v1");
-    const initial = returning ? ["minute-pass", "appearance"] : [];
+    const initial =
+      localStorage.getItem(previousTourKey) === "1"
+        ? animatedTour
+        : returning
+          ? originalTour
+          : [];
     localStorage.setItem(demoKey, JSON.stringify(initial));
     return initial;
   } catch {
@@ -45,7 +60,28 @@ export async function readTourProgress(
     .select("feature_id")
     .eq("user_id", userId);
   if (error) throw error;
-  return data.map((row) => String(row.feature_id));
+  const seen = data.map((row) => String(row.feature_id));
+  // A device-only flag can be carried forward once, and only to a returning
+  // account with the migration baseline. A new account always starts empty.
+  if (
+    seen.length !== originalTour.length ||
+    !originalTour.every((id) => seen.includes(id))
+  )
+    return seen;
+  try {
+    const ownerKey = "minutenclub-legacy-tour-owner";
+    const owner = localStorage.getItem(ownerKey);
+    if (
+      localStorage.getItem(previousTourKey) !== "1" ||
+      (owner && owner !== userId)
+    )
+      return seen;
+    localStorage.setItem(ownerKey, userId);
+  } catch {
+    return seen;
+  }
+  await acknowledgeFeatures(userId, false, animatedTour);
+  return animatedTour;
 }
 
 export async function acknowledgeFeatures(
