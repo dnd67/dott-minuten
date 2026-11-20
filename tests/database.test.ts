@@ -106,6 +106,17 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
       );
       await assert.rejects(
         () =>
+          as(friend, "select public.record_package($1,$2,$3,600,9000,$4,$5)", [
+            gid,
+            randomUUID(),
+            friendMember,
+            "2026-01-01T12:00:00Z",
+            "Legacy",
+          ]),
+        /Keine Berechtigung/,
+      );
+      await assert.rejects(
+        () =>
           as(friend, "update public.memberships set role='admin' where id=$1", [
             friendMember,
           ]),
@@ -459,9 +470,9 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
         JSON.stringify(inputs),
         "Gemeinsame Aufladung",
       ];
-      await assert.rejects(() => as(friend, sql, params), /Keine Berechtigung/);
-      await as(owner, sql, params);
-      await as(owner, sql, params);
+      // Normales aktives Mitglied darf gemeinsame Aufladungen buchen (auch mit anderem Mitglied als Käufer).
+      await as(friend, sql, params);
+      await as(friend, sql, params);
       const cs = await as<{
         member_id: string;
         amount_rappen: number;
@@ -479,7 +490,7 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
             (x) => x.member_id === c.member_id,
           )!.minutes * 60,
         );
-      const entries = await as<{ seconds: number }>(
+      const entries = await as<{ seconds: number; created_by: string }>(
         owner,
         "select * from public.minute_entries where package_id=$1",
         [id],
@@ -489,6 +500,7 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
         entries.reduce((n, e) => n + Number(e.seconds), 0),
         36000,
       );
+      assert.ok(entries.every((e) => e.created_by === friend));
       await assert.rejects(
         () =>
           as(
@@ -583,6 +595,9 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
         [gid],
       );
       assert.equal(snap.value.contributions.length, 9);
+      const unknown = randomUUID();
+      await db.exec("reset role");
+      await db.query("insert into auth.users values($1)", [unknown]);
       for (const mode of [
         "equal",
         "minutes",
@@ -595,17 +610,21 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
             { member_id: ownerMember, weight: mode === "equal" ? 1 : 77 },
           ],
         };
+        const payerId = mode === "equal" ? friendMember : ownerMember;
         const args = [
           gid,
           splitId,
-          ownerMember,
+          payerId,
           101,
           1,
           date,
           JSON.stringify(plan),
           mode,
         ];
-        await assert.rejects(() => as(friend, sql, args), /Keine Berechtigung/);
+        await assert.rejects(
+          () => as(unknown, sql, args),
+          /Keine Berechtigung/,
+        );
         for (const shares of [
           [],
           [plan.shares[0], plan.shares[0]],
@@ -614,10 +633,16 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
         ]) {
           const invalidArgs = [...args];
           invalidArgs[6] = JSON.stringify({ mode, shares });
-          await assert.rejects(() => as(owner, sql, invalidArgs));
+          await assert.rejects(() => as(friend, sql, invalidArgs));
         }
-        await as(owner, sql, args);
-        await as(owner, sql, args);
+        await as(friend, sql, args);
+        await as(friend, sql, args);
+        const [pkgRow] = await as<{ payer_id: string }>(
+          owner,
+          "select payer_id from public.packages where id=$1",
+          [splitId],
+        );
+        assert.equal(pkgRow.payer_id, payerId);
         const stored = await as<{
           member_id: string;
           minutes: number;
@@ -633,20 +658,18 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
             a.member_id.localeCompare(b.member_id),
           ),
         );
-        const credits = await as<{ seconds: number }>(
+        const credits = await as<{ seconds: number; created_by: string }>(
           owner,
-          "select seconds::int from public.minute_entries where package_id=$1",
+          "select seconds::int, created_by from public.minute_entries where package_id=$1",
           [splitId],
         );
         assert.equal(
           credits.reduce((n, c) => n + c.seconds, 0),
           6060,
         );
+        assert.ok(credits.every((c) => c.created_by === friend));
       }
       // Keine Berechtigung für eine fremde Gruppe: weder Beiträge noch Snapshot.
-      const unknown = randomUUID();
-      await db.exec("reset role");
-      await db.query("insert into auth.users values($1)", [unknown]);
       assert.equal(
         (await as(unknown, "select * from public.package_contributions"))
           .length,
@@ -1145,6 +1168,322 @@ test("Datenbank: echte Migration, Transaktionen und Rollenrechte", async (t) => 
         [gid],
       );
       assert.equal(dashAfterDeact.value.places.length, 0);
+    },
+  );
+  await t.test(
+    "Normale Mitglieder dürfen Minutenpakete erfassen; Sicherheitsgrenzen bleiben dicht",
+    async () => {
+      const topupSql = "select public.record_topup($1,$2,$3,$4,$5,$6,$7,$8)";
+      const topupDate = "2026-01-05T12:00:00Z";
+      const equalPlan = JSON.stringify({
+        mode: "equal",
+        shares: [
+          { member_id: friendMember, weight: 1 },
+          { member_id: ownerMember, weight: 1 },
+        ],
+      });
+
+      // 1. p_note => null wird sauber als '' gespeichert; created_by protokolliert das buchende Mitglied.
+      const nullNoteId = randomUUID();
+      await as(friend, topupSql, [
+        gid,
+        nullNoteId,
+        friendMember,
+        120,
+        1800,
+        topupDate,
+        equalPlan,
+        null,
+      ]);
+      // Idempotente Wiederholung mit p_note => null erzeugt keine Doppelbuchung.
+      await as(friend, topupSql, [
+        gid,
+        nullNoteId,
+        friendMember,
+        120,
+        1800,
+        topupDate,
+        equalPlan,
+        null,
+      ]);
+      const [nullNotePkg] = await as<{ note: string; payer_id: string }>(
+        owner,
+        "select note, payer_id from public.packages where id=$1",
+        [nullNoteId],
+      );
+      assert.equal(nullNotePkg.note, "");
+      assert.equal(nullNotePkg.payer_id, friendMember);
+      const nullNoteEntries = await as<{ seconds: number; created_by: string }>(
+        owner,
+        "select seconds::int, created_by from public.minute_entries where package_id=$1",
+        [nullNoteId],
+      );
+      assert.equal(nullNoteEntries.length, 2);
+      assert.ok(nullNoteEntries.every((e) => e.created_by === friend));
+
+      // 2. Überlange Notiz (>500 Zeichen) wird VOR app_private.claim abgelehnt; danach klappt derselbe Schlüssel.
+      const longNoteId = randomUUID();
+      await assert.rejects(
+        () =>
+          as(friend, topupSql, [
+            gid,
+            longNoteId,
+            friendMember,
+            60,
+            900,
+            topupDate,
+            equalPlan,
+            "x".repeat(501),
+          ]),
+        /500 Zeichen/,
+      );
+      assert.equal(
+        (
+          await as(owner, "select id from public.packages where id=$1", [
+            longNoteId,
+          ])
+        ).length,
+        0,
+      );
+      assert.equal(
+        (
+          await as(
+            owner,
+            "select id from public.package_contributions where package_id=$1",
+            [longNoteId],
+          )
+        ).length,
+        0,
+      );
+      assert.equal(
+        (
+          await as(
+            owner,
+            "select id from public.minute_entries where package_id=$1",
+            [longNoteId],
+          )
+        ).length,
+        0,
+      );
+      // Derselbe Request-Key ist nach der Ablehnung noch frei:
+      await as(friend, topupSql, [
+        gid,
+        longNoteId,
+        friendMember,
+        60,
+        900,
+        topupDate,
+        equalPlan,
+        "  Kurze Notiz  ",
+      ]);
+      const [trimmedPkg] = await as<{ note: string }>(
+        owner,
+        "select note from public.packages where id=$1",
+        [longNoteId],
+      );
+      assert.equal(trimmedPkg.note, "Kurze Notiz");
+
+      // 3. Ungültige p_contributions (null / Skalar) und null p_request_id werden sauber abgewiesen.
+      for (const badJson of [null, "123", '"text"']) {
+        await assert.rejects(
+          () =>
+            as(friend, topupSql, [
+              gid,
+              randomUUID(),
+              friendMember,
+              60,
+              900,
+              topupDate,
+              badJson,
+              "",
+            ]),
+          /Unbekannte Aufteilung/,
+        );
+      }
+      await assert.rejects(
+        () =>
+          as(friend, topupSql, [
+            gid,
+            null,
+            friendMember,
+            60,
+            900,
+            topupDate,
+            equalPlan,
+            "",
+          ]),
+        /Ungültige Anfrage/,
+      );
+
+      // 4. Deaktiviertes Mitglied (Max / outsider) darf weder buchen noch als Zahler/Teilnehmer vorkommen.
+      const [{ id: inactiveMaxMember }] = await as<{ id: string }>(
+        owner,
+        "select id from public.memberships where group_id=$1 and user_id=$2",
+        [gid, outsider],
+      );
+      await assert.rejects(
+        () =>
+          as(outsider, topupSql, [
+            gid,
+            randomUUID(),
+            ownerMember,
+            60,
+            900,
+            topupDate,
+            equalPlan,
+            "",
+          ]),
+        /Keine Berechtigung/,
+      );
+      await assert.rejects(
+        () =>
+          as(friend, topupSql, [
+            gid,
+            randomUUID(),
+            inactiveMaxMember,
+            60,
+            900,
+            topupDate,
+            equalPlan,
+            "",
+          ]),
+        /Aktives Mitglied nicht gefunden/,
+      );
+      await assert.rejects(
+        () =>
+          as(friend, topupSql, [
+            gid,
+            randomUUID(),
+            friendMember,
+            60,
+            900,
+            topupDate,
+            JSON.stringify({
+              mode: "equal",
+              shares: [{ member_id: inactiveMaxMember, weight: 1 }],
+            }),
+            "",
+          ]),
+        /Aktives Mitglied nicht gefunden/,
+      );
+
+      // 5. Gruppenfremde Personen und Cross-Group-IDs werden vollständig blockiert.
+      const otherGroupUser = randomUUID();
+      await db.exec("reset role");
+      await db.query("insert into auth.users values($1)", [otherGroupUser]);
+      const [{ id: otherGid }] = await as<{ id: string }>(
+        otherGroupUser,
+        "select public.create_group('Andere Crew','Lena',$1) as id",
+        [randomUUID()],
+      );
+      const [{ id: otherGroupMember }] = await as<{ id: string }>(
+        otherGroupUser,
+        "select id from public.memberships where group_id=$1 and user_id=$2",
+        [otherGid, otherGroupUser],
+      );
+      await assert.rejects(
+        () =>
+          as(otherGroupUser, topupSql, [
+            gid,
+            randomUUID(),
+            ownerMember,
+            60,
+            900,
+            topupDate,
+            equalPlan,
+            "",
+          ]),
+        /Keine Berechtigung/,
+      );
+      await assert.rejects(
+        () =>
+          as(friend, topupSql, [
+            gid,
+            randomUUID(),
+            otherGroupMember,
+            60,
+            900,
+            topupDate,
+            equalPlan,
+            "",
+          ]),
+        /Aktives Mitglied nicht gefunden/,
+      );
+      await assert.rejects(
+        () =>
+          as(friend, topupSql, [
+            gid,
+            randomUUID(),
+            friendMember,
+            60,
+            900,
+            topupDate,
+            JSON.stringify({
+              mode: "equal",
+              shares: [{ member_id: otherGroupMember, weight: 1 }],
+            }),
+            "",
+          ]),
+        /Aktives Mitglied nicht gefunden/,
+      );
+
+      // 6. Anonyme Rolle (anon) darf record_topup nicht aufrufen.
+      await db.exec("reset role; set role anon");
+      await assert.rejects(
+        () =>
+          db.query(topupSql, [
+            gid,
+            randomUUID(),
+            friendMember,
+            60,
+            900,
+            topupDate,
+            equalPlan,
+            "",
+          ]),
+        /permission denied/,
+      );
+
+      // 7. Direkte Schreibzugriffe (INSERT/UPDATE/DELETE) auf packages, package_contributions und minute_entries bleiben gesperrt.
+      for (const stmt of [
+        "insert into public.packages(id,group_id,payer_id,seconds,price_rappen,purchased_at) values(gen_random_uuid(),$1,$2,60,100,now())",
+        "update public.packages set note='Hack' where group_id=$1 and payer_id=$2",
+        "delete from public.packages where group_id=$1 and payer_id=$2",
+        "insert into public.package_contributions(group_id,package_id,member_id,amount_rappen,allocated_seconds) values($1,$3,$2,100,60)",
+        "update public.package_contributions set amount_rappen=1 where group_id=$1 and member_id=$2",
+        "delete from public.package_contributions where group_id=$1 and member_id=$2",
+        "insert into public.minute_entries(group_id,member_id,seconds,kind,reason,created_by) values($1,$2,60,'credit','Hack',auth.uid())",
+        "update public.minute_entries set seconds=9999 where group_id=$1 and member_id=$2",
+        "delete from public.minute_entries where group_id=$1 and member_id=$2",
+      ]) {
+        const params = stmt.includes("$3")
+          ? [gid, friendMember, nullNoteId]
+          : [gid, friendMember];
+        await assert.rejects(
+          () => as(friend, stmt, params),
+          /permission denied/,
+        );
+      }
+
+      // 8. credit_minutes und legacy record_package bleiben für normale Mitglieder streng gesperrt.
+      await assert.rejects(
+        () =>
+          as(friend, "select public.credit_minutes($1,$2,$3,50,'Bonus')", [
+            gid,
+            randomUUID(),
+            friendMember,
+          ]),
+        /Keine Berechtigung/,
+      );
+      await assert.rejects(
+        () =>
+          as(
+            friend,
+            "select public.record_package($1,$2,$3,60,900,$4,'Legacy')",
+            [gid, randomUUID(), friendMember, topupDate],
+          ),
+        /Keine Berechtigung/,
+      );
     },
   );
   await db.close();

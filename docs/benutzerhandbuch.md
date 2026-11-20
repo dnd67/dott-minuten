@@ -4,7 +4,7 @@ Minutenclub führt Buch über die Dott-Minuten, die eure Gruppe gemeinsam kauft.
 
 ## Zum ersten Mal öffnen
 
-**Ausprobieren.** Öffne im Browser die App und wähle die Demo. Du siehst Beispieldaten für Oskar, August und Max und nutzt die App als normal angemeldetes Mitglied mit den grundlegenden Rechten (ohne Admin-Funktionen und ohne Dev-Dashboard). Die Demo speichert Änderungen auf diesem Gerät in diesem Browser. «Zurücksetzen» am Seitenende lädt wieder die Ausgangsdaten. Für einen lokalen Start auf dem Laptop gibt es unten eine Anleitung.
+**Ausprobieren.** Öffne im Browser die App und wähle die Demo. Du siehst Beispieldaten für Oskar, August und Max und nutzt die App als normal angemeldetes Mitglied mit den grundlegenden Rechten (inkl. Fahrten und Minutenpakete erfassen, ohne Admin-Funktionen und ohne Dev-Dashboard). Die Demo speichert Änderungen auf diesem Gerät in diesem Browser. «Zurücksetzen» am Seitenende lädt wieder die Ausgangsdaten. Für einen lokalen Start auf dem Laptop gibt es unten eine Anleitung.
 
 **Eurer Gruppe beitreten.** Öffne den Einladungslink vom Admin. Wenn du neu bist, erstelle ein Konto mit einem freien Benutzernamen und Passwort. Ein bereits vorhandenes Konto kann sich direkt anmelden. Beim Gruppenbeitritt gibst du deinen Anzeigenamen an. Der Link füllt den Einladungscode vor, alternativ kannst du ihn selbst eingeben. Neue Mitglieder starten mit null Minuten. Gib Einladungslink und Startpasswort nur privat weiter.
 
@@ -26,7 +26,7 @@ Screenshots dienen momentan zum Ablesen. Die aktuelle Version erfasst die Werte 
 
 ## Ein Paket kaufen und verteilen
 
-Erfasse den Kauf einmal als Admin unter **Guthaben → Guthaben aufladen**. Wähle die Person, die das Paket gekauft hat, und trage Paketminuten, Paketpreis in CHF und Kaufzeitpunkt ein. Die kaufende Person darf auch für andere einkaufen. Die Aufteilung bestimmt, auf welchen Konten die Minuten landen.
+Jedes aktive Mitglied kann den Kauf einmal unter **Guthaben → Guthaben aufladen** erfassen. Wähle die Person, die das Paket gekauft hat, und trage Paketminuten, Paketpreis in CHF und Kaufzeitpunkt ein. Die kaufende Person darf auch für andere einkaufen. Die Aufteilung bestimmt, auf welchen Konten die Minuten landen.
 
 | Schaltfläche       | Was du einträgst                                                                                                                   | Beispiel für 600 Minuten zu CHF 90                                                                            |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
@@ -83,7 +83,7 @@ Auf dem iPhone öffnest du die gemeinsame HTTPS-Adresse in Safari. Mit **Teilen 
 | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Verschiedene Salden auf zwei Geräten      | Prüfe Gruppenname und Login. Bei «Lokale Demo» hat jeder Browser eigene Beispieldaten. Im gemeinsamen Betrieb kannst du über das Aktualisieren-Symbol neu laden. |
 | «Offline»                                 | Stelle die Verbindung wieder her und prüfe den letzten Eintrag. Zum Speichern in der gemeinsamen Gruppe ist Internet erforderlich.                               |
-| Kein Knopf für «Guthaben aufladen»        | Öffne den Bereich **Guthaben** und prüfe deine Rolle unter **Mitglieder**. Ein Admin kann den Kauf erfassen.                                                     |
+| Kein Knopf für «Guthaben aufladen»        | Öffne den Bereich **Guthaben** und prüfe unter **Mitglieder**, ob dein Zugang aktiv ist.                                                                         |
 | Anmeldung oder Registrierung klappt nicht | Prüfe Benutzername, Passwort und bei einem neuen Konto den Einladungscode. Ist der Link abgelaufen oder gesperrt, kann ein Admin eine neue Einladung erstellen.  |
 | `npm` wird in PowerShell nicht gefunden   | Installiere Node.js mit npm und öffne PowerShell neu. Prüfe `node --version` und `npm.cmd --version`.                                                            |
 

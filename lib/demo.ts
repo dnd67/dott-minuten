@@ -317,7 +317,6 @@ export function demoSnapshot(): Snapshot {
 
 const ADMIN_ACTIONS: ReadonlySet<Action> = new Set([
   "credit_minutes",
-  "record_topup",
   "record_package",
   "void_ride",
   "update_member",
@@ -623,12 +622,49 @@ export function demoAction(
     });
   else if (action === "record_topup") {
     if (data.packages.some((p) => p.id === id)) return data;
-    if (!args.p_contributions || typeof args.p_contributions !== "object")
+    const pkgMinutes =
+      typeof args.p_minutes === "number" ? args.p_minutes : Number.NaN;
+    const pkgPriceRappen =
+      typeof args.p_price_rappen === "number"
+        ? args.p_price_rappen
+        : Number.NaN;
+    const purchasedAt =
+      typeof args.p_purchased_at === "string" ? args.p_purchased_at.trim() : "";
+    const purchasedMs = purchasedAt ? Date.parse(purchasedAt) : Number.NaN;
+    if (
+      !Number.isFinite(purchasedMs) ||
+      purchasedMs > Date.now() + 5 * 60_000
+    ) {
+      throw new Error(
+        "Bitte gültige Paketminuten, einen positiven Preis und einen gültigen Kaufzeitpunkt eingeben.",
+      );
+    }
+    const cleanNote = String(args.p_note ?? "").trim();
+    if (cleanNote.length > 500) {
+      throw new Error("Notiz darf höchstens 500 Zeichen lang sein.");
+    }
+    const payerId =
+      typeof args.p_payer_id === "string" ? args.p_payer_id.trim() : "";
+    if (!payerId || !data.members.some((m) => m.id === payerId && m.active)) {
+      throw new Error("Aktives Mitglied nicht gefunden.");
+    }
+    const rawPlan = args.p_contributions;
+    if (!rawPlan || typeof rawPlan !== "object") {
       throw new Error("Bitte Beiträge angeben.");
+    }
+    if (!Array.isArray(rawPlan)) {
+      const planObj = rawPlan as { mode?: unknown; shares?: unknown };
+      if (planObj.mode !== "equal" && planObj.mode !== "minutes") {
+        throw new Error("Unbekannte Aufteilung.");
+      }
+      if (!Array.isArray(planObj.shares)) {
+        throw new Error("Bitte die Teilnehmenden als Liste angeben.");
+      }
+    }
     const shares = splitPackage(
-      Number(args.p_minutes),
-      Number(args.p_price_rappen),
-      args.p_contributions as TopupPlan,
+      pkgMinutes,
+      pkgPriceRappen,
+      rawPlan as TopupPlan,
     );
     if (
       shares.some(
@@ -639,11 +675,11 @@ export function demoAction(
     data.packages.push({
       id,
       group_id: gid,
-      payer_id: String(args.p_payer_id),
-      seconds: Number(args.p_minutes) * 60,
-      price_rappen: Number(args.p_price_rappen),
-      purchased_at: String(args.p_purchased_at),
-      note: String(args.p_note),
+      payer_id: payerId,
+      seconds: pkgMinutes * 60,
+      price_rappen: pkgPriceRappen,
+      purchased_at: purchasedAt,
+      note: cleanNote,
     });
     data.contributions ??= [];
     for (const c of shares) {

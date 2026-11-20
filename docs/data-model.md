@@ -39,7 +39,7 @@ Interne Gutschriften sind frei wählbare positive Ganzminutenbeträge bis zur te
 ## Transaktionen, Rechte und Korrekturen
 
 - Ein Mitglied erfasst nur eigene Fahrten. Die Person wird serverseitig aus dem Login abgeleitet.
-- Admins können positive Gutschriften buchen, Pakete erfassen und Fahrten stornieren.
+- Alle aktiven Mitglieder können Minutenpakete über `record_topup` erfassen und aufteilen. Admins können zusätzlich kostenlose interne Gutschriften (`credit_minutes`) buchen, den alten Kompatibilitäts-RPC `record_package` aufrufen und Fahrten stornieren (`void_ride`).
 - Eine Fahrt erzeugt genau einen negativen Journalbetrag, eine Stornierung genau eine Gegenbuchung. `voided_by_member_id` referenziert die ausführende Mitgliedschaft derselben Gruppe; `voided_at` und `void_reason` halten Zeitpunkt und Grund fest. Die Originalfahrt bleibt erhalten und wird aus aktiven Statistiken herausgenommen.
 - Ein identischer Schreibversuch mit gleichem Idempotenzschlüssel ist wirkungslos. Abweichende Nutzdaten mit demselben Schlüssel werden zurückgewiesen.
 - Alle Mutationen prüfen zuerst die aktive Mitgliedschaft und sperren die Gruppe für die kurze Transaktion. Eine fehlgeschlagene Aktion hinterlässt keine Teilbuchungen oder reservierten Idempotenzschlüssel.
@@ -49,13 +49,13 @@ Version 1 bietet keine negativen administrativen Guthabenkorrekturen, Minutenüb
 
 ## Aufteilung eines Pakets
 
-Die RPC `record_topup` prüft Admin-Rechte, aktive Mitglieder derselben Gruppe, eindeutige Beitragszeilen, ganze nicht negative Rappenbeträge und einen positiven Paketpreis. Alle Beiträge müssen zusammen den Preis ergeben. Sie legt Paket und Beitragszeilen an und schreibt die entsprechenden Minuten über `minute_entries` gut. `minute_entries.package_id` stellt die Verbindung her. Nullbeiträge sind erlaubt; Null-Minuten-Anteile erzeugen keinen Journalbetrag.
+Die RPC `record_topup` prüft aktive Gruppenmitgliedschaft (für alle aktiven Mitglieder, nicht nur Admins), aktive Mitglieder derselben Gruppe für Käufer und Anteile, eindeutige Beitragszeilen, ganze nicht negative Rappenbeträge und einen positiven Paketpreis. Alle Beiträge müssen zusammen den Preis ergeben. Sie legt Paket und Beitragszeilen an und schreibt die entsprechenden Minuten über `minute_entries` gut. `minute_entries.package_id` stellt die Verbindung her. Nullbeiträge sind erlaubt; Null-Minuten-Anteile erzeugen keinen Journalbetrag.
 
 Im Modus «Nach CHF-Beitrag» entspricht die Minutenzuteilung `Paketminuten × Beitrag / Paketpreis`. Zunächst wird je Person auf ganze Minuten abgerundet. Die übrigen Minuten erhalten die grössten Nachkommareste, bei Gleichstand die niedrigere feste Mitglieds-ID. Die Summe entspricht exakt den gekauften Minuten. Die Datenbank verwendet exakte Dezimalrechnung, die Vorschau BigInt-Brüche. Beispiel: 600 Minuten für CHF 90, Beiträge 30/45/15 → 200/300/100 Minuten.
 
-«Fair aufteilen» (`equal`) gewichtet jedes ausgewählte Mitglied mit eins. Bei «Nach Minutenbedarf» ergeben die eingegebenen Ganzminuten zusammen exakt die Paketgrösse. Der Server verteilt Minuten und Rappen jeweils aus den ursprünglichen Gewichten. Auch bei einem Paket zu einem Rappen bleiben damit vorgegebene Minutenanteile exakt. Gespeichert werden die resultierenden Beträge und Sekunden. Die Anzeige kann historische Ergebnisse direkt lesen. [Migration zur Paketaufteilung](../supabase/migrations/202611190006_package_splits.sql)
+«Fair aufteilen» (`equal`) gewichtet jedes ausgewählte Mitglied mit eins. Bei «Nach Minutenbedarf» ergeben die eingegebenen Ganzminuten zusammen exakt die Paketgrösse. Der Server verteilt Minuten und Rappen jeweils aus den ursprünglichen Gewichten. Auch bei einem Paket zu einem Rappen bleiben damit vorgegebene Minutenanteile exakt. Gespeichert werden die resultierenden Beträge und Sekunden. Die Anzeige kann historische Ergebnisse direkt lesen. [Migration zur Paketaufteilung](../supabase/migrations/202611190006_package_splits.sql) · [Freigabe für Mitglieder](../supabase/migrations/202611200001_member_packages.sql)
 
-Kauf, Beiträge, Gutschriften und Idempotenz sind eine gemeinsame Transaktion. Ein fehlerhafter oder nur teilweise finanzierter Kauf speichert nichts. Der alte RPC `record_package` bleibt für Kompatibilität bestehen; die aktuelle Aufladeoberfläche verwendet ausschliesslich `record_topup`. Für ältere Käufe ohne Beitragsdaten werden keine Zahlungen oder zusätzlichen Gutschriften erfunden.
+Kauf, Beiträge, Gutschriften und Idempotenz sind eine gemeinsame Transaktion. Ein fehlerhafter oder nur teilweise finanzierter Kauf speichert nichts. Der alte RPC `record_package` bleibt aus Kompatibilitätsgründen ausschliesslich für Admins bestehen; die aktuelle Aufladeoberfläche verwendet ausschliesslich `record_topup`. Für ältere Käufe ohne Beitragsdaten werden keine Zahlungen oder zusätzlichen Gutschriften erfunden.
 
 Das Diagramm verwendet `Kontingent = Summe aller credit-Einträge`, `Verbrauch = aktive Fahrten` und `Restguthaben = gesamtes Journal`. Gegenbuchungen von Stornos erhöhen nicht das Kontingent. Überschreitet der Verbrauch das Kontingent, wird der gefüllte Balken höher als der transparente und der negative Rest sichtbar.
 

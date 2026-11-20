@@ -392,10 +392,10 @@ export function Dashboard(p: Props) {
     clickCount: number,
     seed: RideSeed | null = null,
   ) {
-    if (
-      !admin &&
-      (kind === "credit" || kind === "package" || kind === "void")
-    ) {
+    if (!me) {
+      return;
+    }
+    if (!admin && (kind === "credit" || kind === "void")) {
       return;
     }
     p.onBeginAction();
@@ -480,11 +480,11 @@ export function Dashboard(p: Props) {
 
   const activeModal =
     modal &&
+    me &&
     (admin ||
       (modal.kind !== "credit" &&
-        modal.kind !== "package" &&
         modal.kind !== "void" &&
-        (modal.kind !== "rename" || renameMember?.id === me?.id)))
+        (modal.kind !== "rename" || renameMember?.id === me.id)))
       ? modal
       : null;
 
@@ -1446,7 +1446,7 @@ export function Dashboard(p: Props) {
                   title="Minutenpakete"
                   description="Gemeinsame Käufe mit Kosten und Minutenanteilen pro Person."
                   aside={
-                    admin ? (
+                    me ? (
                       <button
                         className="button secondary"
                         onClick={(e) => open("package", e.detail)}
@@ -1512,7 +1512,7 @@ export function Dashboard(p: Props) {
                   {!data.packages.length && (
                     <Empty
                       title="Noch kein Paket erfasst"
-                      text="Ein Admin kann euren ersten gemeinsamen Kauf eintragen."
+                      text="Erfasse euren ersten gemeinsamen Kauf über «Guthaben aufladen»."
                     />
                   )}
                 </div>
@@ -1882,8 +1882,9 @@ export function Dashboard(p: Props) {
               <div className="notice">
                 <ShieldCheck size={19} />
                 <span>
-                  Nur Admins können Guthaben gutschreiben, Paketkäufe erfassen
-                  und Fahrten stornieren. Neue Mitglieder starten mit 0 Minuten.
+                  Alle aktiven Mitglieder können Fahrten und Minutenpakete
+                  erfassen. Nur Admins können manuell Minuten gutschreiben und
+                  Fahrten stornieren. Neue Mitglieder starten mit 0 Minuten.
                 </span>
               </div>
               <PasswordDashboard

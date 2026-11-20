@@ -81,7 +81,7 @@ async function assertNoAdminOrDevControls(
   expect(cellCounts.length).toBeGreaterThan(0);
   expect(cellCounts.every((n) => n === 6)).toBe(true);
 
-  // 3. Guthaben (Nur-Lese-Ansicht ohne Admin-Buchungen)
+  // 3. Guthaben (Minutenpakete für Mitglieder erlaubt, manuelle Admin-Gutschrift gesperrt)
   await switchTab(page, mode, "Guthaben");
   await assertNoGlobalAdminOrDevChrome(page, mode);
   await expect(
@@ -89,7 +89,7 @@ async function assertNoAdminOrDevControls(
   ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Guthaben aufladen" }),
-  ).toHaveCount(0);
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Minutenkonten" }),
   ).toBeVisible();
@@ -142,6 +142,11 @@ async function assertNoAdminOrDevControls(
     }),
   ).toBeVisible();
   await expect(page.getByText("Admin Dev-Dashboard")).toHaveCount(0);
+  await expect(
+    page.getByText(
+      "Alle aktiven Mitglieder können Fahrten und Minutenpakete erfassen.",
+    ),
+  ).toBeVisible();
   await expect(
     page.getByText("Ändere hier jederzeit dein eigenes Passwort.", {
       exact: true,
@@ -229,7 +234,7 @@ test("Demo (Desktop): normales Mitglied ohne Admin-/Dev-Rechte – Fahrt, Filter
   await page.getByLabel("Status", { exact: true }).selectOption("active");
   await expect(page.locator("main table tbody tr")).toHaveCount(13);
 
-  // Guthaben: schreibgeschützte Konten, Pakete & Journal
+  // Guthaben: Konten, Pakete & Journal (inkl. Paket-Button, ohne manuelle Admin-Gutschrift)
   await switchTab(page, "desktop", "Guthaben");
   await expect(
     page.locator(".account-item").filter({ hasText: "Oskar" }),
@@ -867,8 +872,422 @@ test("Statistik & Strecken-Bestzeiten auf iPhone-Breite ohne Dev-Dashboard-Zugan
   await switchTab(page, "mobile", "Mitglieder");
   await assertNoGlobalAdminOrDevChrome(page, "mobile");
   await expect(page.getByText("Admin Dev-Dashboard")).toHaveCount(0);
+  await expect(
+    page.getByText(
+      "Alle aktiven Mitglieder können Fahrten und Minutenpakete erfassen.",
+    ),
+  ).toBeVisible();
 
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
+});
+
+test("Demo (Desktop): normales Mitglied legt Minutenpakete an (Equal-, Minuten- & CHF-Split), inkl. Persistenz & Reset", async ({
+  page,
+}) => {
+  const pageErrors: string[] = [];
+  const consoleErrors: string[] = [];
+  page.on("pageerror", (e) => pageErrors.push(e.message));
+  page.on("console", (msg) => {
+    if (msg.type() === "error") consoleErrors.push(msg.text());
+  });
+
+  await page.goto("/?demo=1");
+  await expect(page.getByRole("heading", { name: "Hoi Oskar" })).toBeVisible();
+
+  await switchTab(page, "desktop", "Guthaben");
+  const topupBtn = page.getByRole("button", { name: "Guthaben aufladen" });
+  await expect(topupBtn).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Minuten manuell geben" }),
+  ).toHaveCount(0);
+
+  // Dialog öffnet sauber und schliesst per Escape mit Fokusrückkehr
+  await topupBtn.click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByRole("heading", { name: "Guthaben aufladen" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("dialog")).toHaveCount(0);
+  await expect(topupBtn).toBeFocused();
+
+  const packagesTable = page
+    .locator("section.panel")
+    .filter({ has: page.getByRole("heading", { name: "Minutenpakete" }) })
+    .locator("table");
+  await expect(packagesTable.locator("tbody tr")).toHaveCount(1);
+  await expect(page.locator(".journal-row")).toHaveCount(15);
+
+  // 1. Fair aufteilen (equal): August bezahlt 100 Min. / CHF 20.00 für Oskar & August (ohne Max)
+  await topupBtn.click();
+  await expect(
+    dialog.getByRole("button", { name: "Fair aufteilen" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await dialog.getByLabel("Paket gekauft von").selectOption("demo-1");
+  await dialog.getByLabel("Minuten", { exact: true }).fill("100");
+  await dialog.getByLabel("Paketpreis (CHF)").fill("20.00");
+  await dialog.getByLabel("Max", { exact: true }).uncheck();
+  await expect(dialog.locator(".allocation-status")).toContainText(
+    /100 Minuten · CHF\s*20[.,]00 aufgeteilt/,
+  );
+  await expect(
+    dialog.locator(".split-person").filter({ hasText: "Oskar" }),
+  ).toContainText(/50 Min\. · CHF\s*10[.,]00/);
+  await expect(
+    dialog.locator(".split-person").filter({ hasText: "August" }),
+  ).toContainText(/50 Min\. · CHF\s*10[.,]00/);
+  await dialog.getByLabel("Notiz optional").fill("Herbstpass Equal");
+  await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(page.locator("dialog")).toHaveCount(0);
+
+  await expect(packagesTable.locator("tbody tr")).toHaveCount(2);
+  const equalRow = packagesTable
+    .locator("tbody tr")
+    .filter({ hasText: "Herbstpass Equal" });
+  await expect(equalRow).toContainText("August");
+  await expect(equalRow).toContainText("100 Min.");
+  await expect(equalRow).toContainText(/CHF\s*20[.,]00/);
+  await expect(equalRow.locator(".package-shares")).toContainText(
+    /Oskar:\s*CHF\s*10[.,]00\s*→\s*50 Min\./,
+  );
+  await expect(equalRow.locator(".package-shares")).toContainText(
+    /August:\s*CHF\s*10[.,]00\s*→\s*50 Min\./,
+  );
+  await expect(equalRow.locator(".package-shares")).not.toContainText("Max");
+
+  await expect(
+    page.locator(".account-item").filter({ hasText: "Oskar" }),
+  ).toContainText("199");
+  await expect(
+    page.locator(".account-item").filter({ hasText: "August" }),
+  ).toContainText("197");
+  await expect(
+    page.locator(".account-item").filter({ hasText: "Max" }),
+  ).toContainText("147");
+  await expect(
+    page.locator(".metric-card").filter({ hasText: "Dein Guthaben" }),
+  ).toContainText("199");
+  await expect(
+    page.locator(".metric-card").filter({ hasText: "Noch nicht zugewiesen" }),
+  ).toContainText("0");
+  await expect(
+    page.locator(".metric-card").filter({ hasText: "Paketkäufe insgesamt" }),
+  ).toContainText(/CHF\s*110[.,]00/);
+  await expect(
+    page.locator(".metric-card").filter({ hasText: "Paketkäufe insgesamt" }),
+  ).toContainText("700 Minuten gekauft");
+
+  await expect(page.locator(".journal-row")).toHaveCount(17);
+  const creditRowsAfterEqual = page
+    .locator(".journal-row")
+    .filter({ hasText: "Anteil am Minutenpaket" });
+  await expect(creditRowsAfterEqual).toHaveCount(2);
+  await expect(creditRowsAfterEqual.filter({ hasText: "Oskar" })).toContainText(
+    "+50",
+  );
+  await expect(
+    creditRowsAfterEqual.filter({ hasText: "August" }),
+  ).toContainText("+50");
+
+  await switchTab(page, "desktop", "Übersicht");
+  await expect(page.locator(".balance-number")).toContainText("199");
+  await expect(
+    page.getByRole("img", {
+      name: "Oskar: 51 von 250 Minuten verbraucht, 199 Minuten übrig.",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".metric-card").filter({ hasText: "Gemeinsamer Bestand" }),
+  ).toContainText("543");
+
+  // 2. Nach Minutenbedarf (minutes): Oskar bezahlt 90 Min. / CHF 18.00 (Oskar 60, Max 30, ohne August)
+  await switchTab(page, "desktop", "Guthaben");
+  await topupBtn.click();
+  await dialog.getByLabel("Minuten", { exact: true }).fill("90");
+  await dialog.getByLabel("Paketpreis (CHF)").fill("18.00");
+  await dialog.getByRole("button", { name: "Nach Minutenbedarf" }).click();
+  await expect(
+    dialog.getByRole("button", { name: "Nach Minutenbedarf" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await dialog.getByLabel("August", { exact: true }).uncheck();
+  await dialog
+    .getByLabel("Minutenbedarf von Oskar", { exact: true })
+    .fill("60");
+  await dialog.getByLabel("Minutenbedarf von Max", { exact: true }).fill("30");
+  await expect(dialog.locator(".allocation-status")).toContainText(
+    /90 Minuten · CHF\s*18[.,]00 aufgeteilt/,
+  );
+  await dialog.getByLabel("Notiz optional").fill("Winterpass Bedarf");
+  await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(page.locator("dialog")).toHaveCount(0);
+
+  await expect(packagesTable.locator("tbody tr")).toHaveCount(3);
+  const minutesRow = packagesTable
+    .locator("tbody tr")
+    .filter({ hasText: "Winterpass Bedarf" });
+  await expect(minutesRow).toContainText("Oskar");
+  await expect(minutesRow).toContainText("90 Min.");
+  await expect(minutesRow.locator(".package-shares")).toContainText(
+    /Oskar:\s*CHF\s*12[.,]00\s*→\s*60 Min\./,
+  );
+  await expect(minutesRow.locator(".package-shares")).toContainText(
+    /Max:\s*CHF\s*6[.,]00\s*→\s*30 Min\./,
+  );
+  await expect(
+    page.locator(".account-item").filter({ hasText: "Oskar" }),
+  ).toContainText("259");
+  await expect(
+    page.locator(".account-item").filter({ hasText: "August" }),
+  ).toContainText("197");
+  await expect(
+    page.locator(".account-item").filter({ hasText: "Max" }),
+  ).toContainText("177");
+
+  // 3. Nach CHF-Beitrag (amount): Oskar bezahlt 60 Min. / CHF 12.00 (6 / 4 / 2 CHF)
+  await topupBtn.click();
+  await dialog.getByLabel("Minuten", { exact: true }).fill("60");
+  await dialog.getByLabel("Paketpreis (CHF)").fill("12.00");
+  await dialog.getByRole("button", { name: "Nach CHF-Beitrag" }).click();
+  await expect(
+    dialog.getByRole("button", { name: "Nach CHF-Beitrag" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await dialog.locator("#share-demo-0").fill("6.00");
+  await dialog.locator("#share-demo-1").fill("4.00");
+  await dialog.locator("#share-demo-2").fill("2.00");
+  await expect(dialog.locator(".sum-line")).toContainText(
+    /CHF\s*12[.,]00\s*\/\s*CHF\s*12[.,]00/,
+  );
+  await expect(dialog.locator(".allocation-status")).toContainText(
+    /60 Minuten · CHF\s*12[.,]00 aufgeteilt/,
+  );
+  await dialog.getByLabel("Notiz optional").fill("Frühlingspass CHF");
+  await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(page.locator("dialog")).toHaveCount(0);
+
+  await expect(packagesTable.locator("tbody tr")).toHaveCount(4);
+  const amountRow = packagesTable
+    .locator("tbody tr")
+    .filter({ hasText: "Frühlingspass CHF" });
+  await expect(amountRow.locator(".package-shares")).toContainText(
+    /Oskar:\s*CHF\s*6[.,]00\s*→\s*30 Min\./,
+  );
+  await expect(amountRow.locator(".package-shares")).toContainText(
+    /August:\s*CHF\s*4[.,]00\s*→\s*20 Min\./,
+  );
+  await expect(amountRow.locator(".package-shares")).toContainText(
+    /Max:\s*CHF\s*2[.,]00\s*→\s*10 Min\./,
+  );
+  await expect(
+    page.locator(".account-item").filter({ hasText: "Oskar" }),
+  ).toContainText("289");
+  await expect(
+    page.locator(".account-item").filter({ hasText: "August" }),
+  ).toContainText("217");
+  await expect(
+    page.locator(".account-item").filter({ hasText: "Max" }),
+  ).toContainText("187");
+  await expect(
+    page.locator(".metric-card").filter({ hasText: "Paketkäufe insgesamt" }),
+  ).toContainText(/CHF\s*140[.,]00/);
+  await expect(
+    page.locator(".metric-card").filter({ hasText: "Paketkäufe insgesamt" }),
+  ).toContainText("850 Minuten gekauft");
+  await expect(page.locator(".journal-row")).toHaveCount(22);
+  await expect(
+    page.locator(".journal-row").filter({ hasText: "Anteil am Minutenpaket" }),
+  ).toHaveCount(7);
+
+  // 4. Persistenz über Reload prüfen
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Hoi Oskar" })).toBeVisible();
+  await expect(page.locator(".balance-number")).toContainText("289");
+  await expect(
+    page.getByRole("img", {
+      name: "Oskar: 51 von 340 Minuten verbraucht, 289 Minuten übrig.",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".metric-card").filter({ hasText: "Gemeinsamer Bestand" }),
+  ).toContainText("693");
+
+  await switchTab(page, "desktop", "Guthaben");
+  await expect(packagesTable.locator("tbody tr")).toHaveCount(4);
+  await expect(packagesTable).toContainText("Herbstpass Equal");
+  await expect(packagesTable).toContainText("Winterpass Bedarf");
+  await expect(packagesTable).toContainText("Frühlingspass CHF");
+  await expect(
+    page.locator(".account-item").filter({ hasText: "Oskar" }),
+  ).toContainText("289");
+  await expect(page.locator(".journal-row")).toHaveCount(22);
+  await expect(
+    page.getByRole("button", { name: "Minuten manuell geben" }),
+  ).toHaveCount(0);
+
+  // 5. Demo-Reset stellt Ausgangspaket wieder her & erneutes Aufladen funktioniert sauber
+  await page
+    .locator(".demo-notice")
+    .getByRole("button", { name: "Zurücksetzen", exact: true })
+    .click();
+  await expect(packagesTable.locator("tbody tr")).toHaveCount(1);
+  await expect(packagesTable).toContainText("Gemeinsames Minutenpaket");
+  await expect(packagesTable).not.toContainText("Herbstpass Equal");
+  await expect(
+    page.locator(".account-item").filter({ hasText: "Oskar" }),
+  ).toContainText("149");
+  await expect(
+    page.locator(".account-item").filter({ hasText: "August" }),
+  ).toContainText("147");
+  await expect(
+    page.locator(".account-item").filter({ hasText: "Max" }),
+  ).toContainText("147");
+  await expect(page.locator(".journal-row")).toHaveCount(15);
+  await expect(
+    page.locator(".metric-card").filter({ hasText: "Paketkäufe insgesamt" }),
+  ).toContainText("600 Minuten gekauft");
+
+  await topupBtn.click();
+  await dialog.getByLabel("Minuten", { exact: true }).fill("30");
+  await dialog.getByLabel("Paketpreis (CHF)").fill("9.00");
+  await dialog.getByLabel("Notiz optional").fill("Nach Reset Paket");
+  await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(page.locator("dialog")).toHaveCount(0);
+  await expect(packagesTable.locator("tbody tr")).toHaveCount(2);
+  await expect(packagesTable).toContainText("Nach Reset Paket");
+  await expect(
+    page.locator(".account-item").filter({ hasText: "Oskar" }),
+  ).toContainText("159");
+  await expect(
+    page.locator(".account-item").filter({ hasText: "August" }),
+  ).toContainText("157");
+  await expect(
+    page.locator(".account-item").filter({ hasText: "Max" }),
+  ).toContainText("157");
+  await expect(page.locator(".journal-row")).toHaveCount(18);
+
+  await assertNoGlobalAdminOrDevChrome(page, "desktop");
+  expect(pageErrors).toEqual([]);
+  expect(consoleErrors).toEqual([]);
+});
+
+test("Demo (Mobil 390px): Minutenpaket als Mitglied anlegen – Dialog, alle Split-Modi & Persistenz ohne Überlauf oder Fehler", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  const pageErrors: string[] = [];
+  const consoleErrors: string[] = [];
+  page.on("pageerror", (e) => pageErrors.push(e.message));
+  page.on("console", (msg) => {
+    if (msg.type() === "error") consoleErrors.push(msg.text());
+  });
+
+  await page.goto("http://localhost:3100/?demo=1");
+  await expect(page.getByRole("heading", { name: "Hoi Oskar" })).toBeVisible();
+
+  await switchTab(page, "mobile", "Guthaben");
+  const topupBtn = page.getByRole("button", { name: "Guthaben aufladen" });
+  await expect(topupBtn).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Minuten manuell geben" }),
+  ).toHaveCount(0);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+
+  // Dialog auf 390px öffnen, alle drei Split-Modi auf Überlauf prüfen & Escape testen
+  await topupBtn.click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByRole("heading", { name: "Guthaben aufladen" }),
+  ).toBeVisible();
+
+  for (const modeLabel of [
+    "Fair aufteilen",
+    "Nach Minutenbedarf",
+    "Nach CHF-Beitrag",
+    "Fair aufteilen",
+  ]) {
+    await dialog.getByRole("button", { name: modeLabel }).click();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(390);
+    expect(
+      await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
+    ).toBe(true);
+  }
+
+  await page.keyboard.press("Escape");
+  await expect(page.locator("dialog")).toHaveCount(0);
+
+  // Paket auf Mobilgerät erfassen (Max bezahlt 150 Min. / CHF 30.00 fair für alle 3)
+  await topupBtn.click();
+  await dialog.getByLabel("Paket gekauft von").selectOption("demo-2");
+  await dialog.getByLabel("Minuten", { exact: true }).fill("150");
+  await dialog.getByLabel("Paketpreis (CHF)").fill("30.00");
+  await expect(dialog.locator(".allocation-status")).toContainText(
+    /150 Minuten · CHF\s*30[.,]00 aufgeteilt/,
+  );
+  await dialog.getByLabel("Notiz optional").fill("Mobilpaket Zürich");
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+  await dialog.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(page.locator("dialog")).toHaveCount(0);
+
+  const packagesTable = page
+    .locator("section.panel")
+    .filter({ has: page.getByRole("heading", { name: "Minutenpakete" }) })
+    .locator("table");
+  await expect(packagesTable.locator("tbody tr")).toHaveCount(2);
+  const mobilePkgRow = packagesTable
+    .locator("tbody tr")
+    .filter({ hasText: "Mobilpaket Zürich" });
+  await expect(mobilePkgRow).toContainText("Max");
+  await expect(mobilePkgRow).toContainText("150 Min.");
+  await expect(mobilePkgRow).toContainText(/CHF\s*30[.,]00/);
+  await expect(mobilePkgRow.locator(".package-shares")).toContainText(
+    /Oskar:\s*CHF\s*10[.,]00\s*→\s*50 Min\./,
+  );
+  await expect(
+    page.locator(".account-item").filter({ hasText: "Oskar" }),
+  ).toContainText("199");
+  await expect(
+    page.locator(".account-item").filter({ hasText: "August" }),
+  ).toContainText("197");
+  await expect(
+    page.locator(".account-item").filter({ hasText: "Max" }),
+  ).toContainText("197");
+  await expect(
+    page.locator(".journal-row").filter({ hasText: "Anteil am Minutenpaket" }),
+  ).toHaveCount(3);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+
+  // Übersicht & Reload-Persistenz auf 390px prüfen
+  await switchTab(page, "mobile", "Übersicht");
+  await expect(page.locator(".balance-number")).toContainText("199");
+  await expect(
+    page.locator(".metric-card").filter({ hasText: "Gemeinsamer Bestand" }),
+  ).toContainText("593");
+  await assertNoGlobalAdminOrDevChrome(page, "mobile");
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Hoi Oskar" })).toBeVisible();
+  await expect(page.locator(".balance-number")).toContainText("199");
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+
+  expect(pageErrors).toEqual([]);
+  expect(consoleErrors).toEqual([]);
+  await context.close();
 });

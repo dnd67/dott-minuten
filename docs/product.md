@@ -10,10 +10,10 @@ Jede Person hat einen eigenen Login und trägt ihre Fahrzeit und Pausierzeit **m
 
 ## Rollen
 
-| Rolle    | Möglichkeiten                                                                                                                                                            |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Mitglied | Eigenen Anzeigenamen ändern; eigene Fahrten erfassen; Gruppenfahrten, Guthaben, Journal, Pakete und Statistiken ansehen.                                                 |
-| Admin    | Zusätzlich alle Mitgliedsnamen ändern, Mitglieder einladen, aktivieren/deaktivieren und Rollen verwalten, Guthaben gutschreiben, Pakete erfassen und Fahrten stornieren. |
+| Rolle    | Möglichkeiten                                                                                                                                                             |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mitglied | Eigenen Anzeigenamen ändern; eigene Fahrten erfassen; Minutenpakete erfassen und aufteilen; Gruppenfahrten, Guthaben, Journal, Pakete und Statistiken ansehen.            |
+| Admin    | Zusätzlich alle Mitgliedsnamen ändern, Mitglieder einladen, aktivieren/deaktivieren und Rollen verwalten, kostenlose manuelle Gutschriften buchen und Fahrten stornieren. |
 
 Neue Mitglieder starten bei 0 Minuten. Mindestens ein aktiver Admin bleibt erhalten. Deaktivierte Personen verlieren den Zugriff, bleiben aber in der Historie sichtbar. Jede Gruppe ist gegenüber fremden Logins abgeschirmt.
 

@@ -11,19 +11,22 @@ Diese Schritte werden einmal für eure Crew erledigt. GitHub enthält den Code; 
 3. Im **SQL Editor** die Dateien aus der folgenden Tabelle in der angegebenen Reihenfolge ausführen. Bei einer bestehenden Datenbank beim ersten noch ausstehenden Schritt beginnen.
 4. Unter **Project Settings → API / API Keys** die Projekt-URL und den Publishable Key für die Web-App kopieren. Auch der bisherige öffentliche Anon-Key wird unterstützt. Die App greift über persönliche Sitzungen, RLS und die SQL-Funktionen auf die gemeinsamen Daten zu.
 
-| Reihenfolge                                                                      | Zweck                                                    |
-| -------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| [202611180001](../supabase/migrations/202611180001_initial.sql)                  | Grundschema, Mitglieder, Fahrten und Journal             |
-| [202611190001](../supabase/migrations/202611190001_names_and_cancellations.sql)  | Anzeigenamen und Storno-Akteur                           |
-| [202611190002](../supabase/migrations/202611190002_shared_topups.sql)            | Gemeinsame Pakete mit Beitragszeilen                     |
-| [202611190003](../supabase/migrations/202611190003_locations_and_feedback.sql)   | Optionale Fahrtorte und Feedback                         |
-| [202611190004](../supabase/migrations/202611190004_username_auth_and_resets.sql) | Benutzerkonten und Passwortanfragen                      |
-| [202611190005](../supabase/migrations/202611190005_security_and_rate_limits.sql) | Einladungsprüfung, Widerruf und Anfragelimits            |
-| [202611190006](../supabase/migrations/202611190006_package_splits.sql)           | Gleichteilung und Minutenbedarf im vorhandenen Paket-RPC |
+| Reihenfolge                                                                      | Zweck                                                             |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| [202611180001](../supabase/migrations/202611180001_initial.sql)                  | Grundschema, Mitglieder, Fahrten und Journal                      |
+| [202611190001](../supabase/migrations/202611190001_names_and_cancellations.sql)  | Anzeigenamen und Storno-Akteur                                    |
+| [202611190002](../supabase/migrations/202611190002_shared_topups.sql)            | Gemeinsame Pakete mit Beitragszeilen                              |
+| [202611190003](../supabase/migrations/202611190003_locations_and_feedback.sql)   | Optionale Fahrtorte und Feedback                                  |
+| [202611190004](../supabase/migrations/202611190004_username_auth_and_resets.sql) | Benutzerkonten und Passwortanfragen                               |
+| [202611190005](../supabase/migrations/202611190005_security_and_rate_limits.sql) | Einladungsprüfung, Widerruf und Anfragelimits                     |
+| [202611190006](../supabase/migrations/202611190006_package_splits.sql)           | Gleichteilung und Minutenbedarf im vorhandenen Paket-RPC          |
+| [202611190007](../supabase/migrations/202611190007_shared_rides.sql)             | Gemeinsame Fahrten auf dem gleichen Scooter                       |
+| [202611190008](../supabase/migrations/202611190008_dev_telemetry_and_places.sql) | Dev-Telemetrie und private 100-m-Crew-Orte                        |
+| [202611200001](../supabase/migrations/202611200001_member_packages.sql)          | Minutenpakete (`record_topup`) für alle aktiven Mitglieder öffnen |
 
 ## Bestehende Installation aktualisieren
 
-Bei einem Projekt auf Stand `202611190005` genügt für die neue Aufteilung die letzte Migration. Spiele sie vor dem neuen Frontend ein. Sie erweitert die vorhandene Funktion, erhält den Aufruf bisheriger Clients und berechnet frühere Paketkäufe nicht neu. Für die lokale Demo entfällt der SQL-Schritt.
+Spiele bei einer bestehenden Datenbank alle noch ausstehenden Migrationen bis einschliesslich `202611200001_member_packages.sql` vor dem neuen Frontend ein. Die Migrationen sind additiv, erhalten den Aufruf bisheriger Clients und berechnen frühere Paketkäufe nicht neu. Für die lokale Demo entfällt der SQL-Schritt.
 
 Zum Aktualisieren eines lokalen Windows-Checkouts zuerst den Entwicklungsserver mit `Ctrl+C` stoppen, dann:
 
@@ -88,7 +91,7 @@ Es gibt keine zusätzlichen Vercel-Server-Secrets oder OCR-API-Schlüssel. Die k
 2. Unter **Mitglieder → Einladung erstellen** einen Code erzeugen. Dieser ist sieben Tage gültig und kann während dieser Zeit von mehreren Freunden verwendet werden. Nur privat mit der Crew teilen.
 3. August und Max öffnen dieselbe Webseite, melden sich jeweils an und wählen **Ich habe schon einen Einladungscode**. Ihren eigenen Namen und den Code eingeben.
 4. Weitere Mitglieder treten auf demselben Weg bei. Es gibt keine fest eingebaute Begrenzung auf drei Personen.
-5. Ein Admin öffnet **Guthaben → Guthaben aufladen** und erfasst Paketminuten und Preis. Wählt Gleichteilung, individuellen Minutenbedarf oder bezahlte CHF-Beiträge. Nach **Speichern** sind die Anteile bereits gutgeschrieben. [Beispiele für alle drei Varianten](benutzerhandbuch.md)
+5. Ein aktives Mitglied (oder ein Admin) öffnet **Guthaben → Guthaben aufladen** und erfasst Paketminuten und Preis. Wählt Gleichteilung, individuellen Minutenbedarf oder bezahlte CHF-Beiträge. Nach **Speichern** sind die Anteile bereits gutgeschrieben. [Beispiele für alle drei Varianten](benutzerhandbuch.md)
 6. Jede Person erfasst nur ihre eigenen Fahrten. Ein Admin kann falsche Fahrten stornieren; die richtige Fahrt wird danach neu eingetragen.
 
 Neue Mitglieder starten bei 0 Minuten. Negatives Guthaben ist sichtbar und verhindert das nachträgliche Erfassen einer tatsächlich gefahrenen Fahrt nicht. Einladungen laufen nach 7 Tagen automatisch ab und lassen sich jederzeit über **Mitglieder → Links sperren** sofort widerrufen.
@@ -106,7 +109,7 @@ Die HTTPS-Webseite in Safari öffnen, **Teilen → Zum Home-Bildschirm** wählen
 - Auf dem zweiten Gerät die aktualisierte Fahrt und den Saldo prüfen. Ein manuelles Neuladen darf nicht nötig sein; bei ausgefallenem Realtime greift spätestens der 30-Sekunden-Abgleich im sichtbaren Fenster.
 - Das zweite Gerät in den Hintergrund schicken, eine Änderung vornehmen und zurückkehren: neuer Stand wird geladen.
 - Verbindung unterbrechen: Offline-Hinweis, keine falsche Speicherbestätigung. Danach erneut versuchen; ein bereits verarbeiteter identischer Versuch darf keine zweite Buchung erzeugen.
-- Als normales Mitglied prüfen, dass keine Guthaben-, Rollen- oder Paketänderungen möglich sind.
+- Als normales Mitglied prüfen, dass Minutenpakete über **Guthaben → Guthaben aufladen** erfasst werden können, aber keine manuellen Gutschriften («Minuten manuell geben»), Rollenänderungen oder Stornos möglich sind.
 - Eine Fahrt als Admin stornieren: ursprüngliche Fahrt bleibt erhalten und genau eine Gegenbuchung entsteht.
 - Mit zwei persönlichen Benutzernamen abmelden und erneut anmelden. Eine Passwortanfrage im Admin-Dashboard bearbeiten und das neue Passwort testen.
 

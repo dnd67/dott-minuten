@@ -7,6 +7,7 @@ import {
   groupSharedRides,
   moneyRappen,
   rideDraft,
+  splitPackage,
   splitRideSeconds,
   summary,
   wholeMinutes,
@@ -16,6 +17,7 @@ import {
   type Member,
   type RpcArgs,
   type Snapshot,
+  type TopupPlan,
   type UserAccount,
 } from "../lib/domain";
 import {
@@ -643,7 +645,7 @@ test("normalizeDemoSnapshot bereinigt veraltete oder manipulierte Admin-Snapshot
   );
 });
 
-test("demoAction verweigert im Standard-Demo-Modus alle 10 Admin-Aktionen und fremde Umbenennungen", () => {
+test("demoAction verweigert im Standard-Demo-Modus alle 9 Admin-Aktionen und fremde Umbenennungen", () => {
   const base = demoSnapshot();
   const adminCases: [Action, RpcArgs][] = [
     [
@@ -653,21 +655,6 @@ test("demoAction verweigert im Standard-Demo-Modus alle 10 Admin-Aktionen und fr
         p_member_id: "demo-0",
         p_minutes: 30,
         p_reason: "Test",
-      },
-    ],
-    [
-      "record_topup",
-      {
-        p_request_id: "adm-topup",
-        p_payer_id: "demo-0",
-        p_minutes: 100,
-        p_price_rappen: 1000,
-        p_purchased_at: "2026-11-19T10:00:00.000Z",
-        p_note: "Paket",
-        p_contributions: [
-          { member_id: "demo-0", amount_rappen: 500 },
-          { member_id: "demo-1", amount_rappen: 500 },
-        ],
       },
     ],
     [
@@ -721,7 +708,7 @@ test("demoAction verweigert im Standard-Demo-Modus alle 10 Admin-Aktionen und fr
     ],
   ];
 
-  assert.equal(adminCases.length, 10);
+  assert.equal(adminCases.length, 9);
   for (const [action, args] of adminCases) {
     assert.throws(
       () => demoAction(base, action, args),
@@ -761,6 +748,22 @@ test("demoAction verweigert im Standard-Demo-Modus alle 10 Admin-Aktionen und fr
         p_occurred_at: "2026-11-19T12:00:00.000Z",
         p_drive_minutes: 5,
         p_pause_minutes: 0,
+      }),
+    { message: "Keine Berechtigung für diese Gruppe." },
+  );
+  assert.throws(
+    () =>
+      demoAction(inactiveActor, "record_topup", {
+        p_request_id: "inactive-topup",
+        p_payer_id: "demo-1",
+        p_minutes: 100,
+        p_price_rappen: 1000,
+        p_purchased_at: "2026-11-19T12:00:00.000Z",
+        p_note: "Inaktives Mitglied",
+        p_contributions: {
+          mode: "equal",
+          shares: [{ member_id: "demo-1", weight: 1 }],
+        },
       }),
     { message: "Keine Berechtigung für diese Gruppe." },
   );
@@ -815,6 +818,261 @@ test("demoAction erlaubt normalen Mitgliedern eigene Fahrten (solo & geteilt), e
   assert.equal(
     afterFeedback.feedback?.[0].message,
     "Funktioniert super als Mitglied",
+  );
+});
+
+test("demoAction erlaubt normalen Mitgliedern Minutenpakete (record_topup) in allen Modi und spiegelt SQL-Validierung", () => {
+  const base = demoSnapshot();
+  const oskarBefore = summary(base, "demo-0").balance;
+  const augustBefore = summary(base, "demo-1").balance;
+  const maxBefore = summary(base, "demo-2").balance;
+  const invBefore = summary(base).inventory;
+  const purchasedAt = "2026-11-19T14:00:00.000Z";
+
+  // 1. Modus "amount" (CHF-Beiträge) mit eigenem Zahler (demo-0), 0-CHF-Anteil & Idempotenz:
+  const amountPlan: TopupPlan = [
+    { member_id: "demo-0", amount_rappen: 6000 },
+    { member_id: "demo-1", amount_rappen: 0 },
+    { member_id: "demo-2", amount_rappen: 3000 },
+  ];
+  const amountArgs: RpcArgs = {
+    p_request_id: "member-topup-amount",
+    p_payer_id: "demo-0",
+    p_minutes: 600,
+    p_price_rappen: 9000,
+    p_purchased_at: purchasedAt,
+    p_note: "  Frühlingspaket  ",
+    p_contributions: amountPlan,
+  };
+  const afterAmount = demoAction(base, "record_topup", amountArgs);
+  const afterAmountRetry = demoAction(afterAmount, "record_topup", amountArgs);
+  assert.deepEqual(afterAmountRetry, afterAmount);
+
+  const amountPkg = afterAmount.packages.find(
+    (p) => p.id === "member-topup-amount",
+  );
+  assert.ok(amountPkg);
+  assert.equal(amountPkg.payer_id, "demo-0");
+  assert.equal(amountPkg.seconds, 600 * 60);
+  assert.equal(amountPkg.price_rappen, 9000);
+  assert.equal(amountPkg.note, "Frühlingspaket");
+
+  const amountContribs = (afterAmount.contributions ?? [])
+    .filter((c) => c.package_id === "member-topup-amount")
+    .map((c) => ({
+      member_id: c.member_id,
+      minutes: c.allocated_seconds / 60,
+      amount_rappen: c.amount_rappen,
+    }));
+  assert.deepEqual(amountContribs, splitPackage(600, 9000, amountPlan));
+  const amountCredits = afterAmount.entries.filter(
+    (e) => e.package_id === "member-topup-amount",
+  );
+  // Null-Minuten-Anteil von August erzeugt keinen Journalbetrag:
+  assert.equal(amountCredits.length, 2);
+  assert.equal(summary(afterAmount, "demo-0").balance, oskarBefore + 400 * 60);
+  assert.equal(summary(afterAmount, "demo-1").balance, augustBefore);
+  assert.equal(summary(afterAmount, "demo-2").balance, maxBefore + 200 * 60);
+  assert.equal(summary(afterAmount).inventory, invBefore + 600 * 60);
+
+  // 2. Modus "equal" (Fair aufteilen) mit anderem aktivem Zahler (demo-1) & p_note: null:
+  const equalPlan: TopupPlan = {
+    mode: "equal",
+    shares: [
+      { member_id: "demo-0", weight: 1 },
+      { member_id: "demo-2", weight: 1 },
+    ],
+  };
+  const afterEqual = demoAction(afterAmount, "record_topup", {
+    p_request_id: "member-topup-equal",
+    p_payer_id: "demo-1",
+    p_minutes: 101,
+    p_price_rappen: 1,
+    p_purchased_at: purchasedAt,
+    p_note: null,
+    p_contributions: equalPlan,
+  });
+  const equalPkg = afterEqual.packages.find(
+    (p) => p.id === "member-topup-equal",
+  );
+  assert.ok(equalPkg);
+  assert.equal(equalPkg.payer_id, "demo-1");
+  assert.equal(equalPkg.note, "");
+  assert.deepEqual(
+    (afterEqual.contributions ?? [])
+      .filter((c) => c.package_id === "member-topup-equal")
+      .map((c) => ({
+        member_id: c.member_id,
+        minutes: c.allocated_seconds / 60,
+        amount_rappen: c.amount_rappen,
+      })),
+    splitPackage(101, 1, equalPlan),
+  );
+  // Zahler August war nicht Teil der Aufteilung -> sein Saldo bleibt unverändert:
+  assert.equal(summary(afterEqual, "demo-1").balance, augustBefore);
+
+  // 3. Modus "minutes" (Nach Minutenbedarf) mit anderem aktivem Zahler (demo-1) & ohne p_note (undefined):
+  const minutesPlan: TopupPlan = {
+    mode: "minutes",
+    shares: [
+      { member_id: "demo-0", weight: 24 },
+      { member_id: "demo-1", weight: 77 },
+    ],
+  };
+  const afterMinutes = demoAction(afterEqual, "record_topup", {
+    p_request_id: "member-topup-minutes",
+    p_payer_id: "demo-1",
+    p_minutes: 101,
+    p_price_rappen: 1,
+    p_purchased_at: purchasedAt,
+    p_contributions: minutesPlan,
+  });
+  const minutesPkg = afterMinutes.packages.find(
+    (p) => p.id === "member-topup-minutes",
+  );
+  assert.ok(minutesPkg);
+  assert.equal(minutesPkg.payer_id, "demo-1");
+  assert.equal(minutesPkg.note, "");
+  assert.deepEqual(
+    (afterMinutes.contributions ?? [])
+      .filter((c) => c.package_id === "member-topup-minutes")
+      .map((c) => ({
+        member_id: c.member_id,
+        minutes: c.allocated_seconds / 60,
+        amount_rappen: c.amount_rappen,
+      })),
+    splitPackage(101, 1, minutesPlan),
+  );
+  assert.equal(summary(afterMinutes, "demo-1").balance, augustBefore + 77 * 60);
+
+  // Genau 500 Zeichen nach Trimmen werden akzeptiert; normalizeDemoSnapshot bewahrt neue Pakete:
+  const withMaxNote = demoAction(afterMinutes, "record_topup", {
+    p_request_id: "member-topup-500",
+    p_payer_id: "demo-0",
+    p_minutes: 10,
+    p_price_rappen: 100,
+    p_purchased_at: purchasedAt,
+    p_note: `  ${"a".repeat(500)}  `,
+    p_contributions: {
+      mode: "equal",
+      shares: [{ member_id: "demo-0", weight: 1 }],
+    },
+  });
+  assert.equal(
+    withMaxNote.packages.find((p) => p.id === "member-topup-500")?.note.length,
+    500,
+  );
+  const normalized = normalizeDemoSnapshot(withMaxNote);
+  assert.ok(normalized.packages.some((p) => p.id === "member-topup-amount"));
+  assert.ok(normalized.packages.some((p) => p.id === "member-topup-equal"));
+  assert.ok(normalized.packages.some((p) => p.id === "member-topup-minutes"));
+
+  // 4. Negative Validierungen (spiegeln SQL public.record_topup):
+  const withInactiveMax = structuredClone(base);
+  withInactiveMax.members[2].active = false;
+
+  const validTopup: RpcArgs = {
+    p_request_id: "member-topup-bad",
+    p_payer_id: "demo-0",
+    p_minutes: 100,
+    p_price_rappen: 1500,
+    p_purchased_at: purchasedAt,
+    p_note: "Test",
+    p_contributions: {
+      mode: "equal",
+      shares: [{ member_id: "demo-0", weight: 1 }],
+    },
+  };
+
+  // Ungültiger, leerer oder inaktiver Zahler:
+  for (const badPayer of ["demo-unknown", "", null]) {
+    assert.throws(
+      () =>
+        demoAction(base, "record_topup", {
+          ...validTopup,
+          p_payer_id: badPayer,
+        }),
+      { message: "Aktives Mitglied nicht gefunden." },
+    );
+  }
+  assert.throws(
+    () =>
+      demoAction(withInactiveMax, "record_topup", {
+        ...validTopup,
+        p_payer_id: "demo-2",
+      }),
+    { message: "Aktives Mitglied nicht gefunden." },
+  );
+
+  // Unbekannter oder inaktiver Beitragender:
+  assert.throws(
+    () =>
+      demoAction(base, "record_topup", {
+        ...validTopup,
+        p_contributions: {
+          mode: "equal",
+          shares: [{ member_id: "demo-unknown", weight: 1 }],
+        },
+      }),
+    { message: "Aktives Mitglied nicht gefunden." },
+  );
+  assert.throws(
+    () =>
+      demoAction(withInactiveMax, "record_topup", {
+        ...validTopup,
+        p_contributions: {
+          mode: "equal",
+          shares: [
+            { member_id: "demo-0", weight: 1 },
+            { member_id: "demo-2", weight: 1 },
+          ],
+        },
+      }),
+    { message: "Aktives Mitglied nicht gefunden." },
+  );
+
+  // Zukünftiger (> 5 Min.) oder ungültiger Kaufzeitpunkt:
+  const tooFarFuture = new Date(Date.now() + 10 * 60_000).toISOString();
+  for (const badDate of [tooFarFuture, "nicht-gueltig", "", null]) {
+    assert.throws(
+      () =>
+        demoAction(base, "record_topup", {
+          ...validTopup,
+          p_purchased_at: badDate,
+        }),
+      /Kaufzeitpunkt/,
+    );
+  }
+
+  // Notiz > 500 Zeichen:
+  assert.throws(
+    () =>
+      demoAction(base, "record_topup", {
+        ...validTopup,
+        p_note: "x".repeat(501),
+      }),
+    { message: "Notiz darf höchstens 500 Zeichen lang sein." },
+  );
+
+  // Ungültiger Aufteilungsmodus oder fehlende Liste:
+  assert.throws(
+    () =>
+      demoAction(base, "record_topup", {
+        ...validTopup,
+        p_contributions: {
+          mode: "custom" as "equal",
+          shares: [{ member_id: "demo-0", weight: 1 }],
+        },
+      }),
+    { message: "Unbekannte Aufteilung." },
+  );
+  assert.throws(
+    () =>
+      demoAction(base, "record_topup", {
+        ...validTopup,
+        p_contributions: null,
+      }),
+    { message: "Bitte Beiträge angeben." },
   );
 });
 
