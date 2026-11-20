@@ -1,10 +1,11 @@
 export type Member = {
   id: string;
   group_id: string;
-  user_id: string;
+  user_id: string | null;
   display_name: string;
   role: "admin" | "member";
   active: boolean;
+  created_at?: string;
 };
 export type Group = { id: string; name: string };
 export type Ride = {

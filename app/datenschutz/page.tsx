@@ -295,18 +295,53 @@ export default function LegalPage() {
             </p>
 
             <h3>
-              3.4 Sichtbarkeit (Row-Level Security), Speicherdauer &amp; deine
-              Rechte
+              3.4 Sichtbarkeit (Row-Level Security), Speicherdauer,
+              Kontolöschung &amp; deine Rechte
             </h3>
             <p>
               Dank strikter Datenbank-Zugriffsregeln (Row-Level Security) sind
               Mitgliedsnamen, Fahrten und Guthaben ausschliesslich für aktive
               Mitglieder derselben privaten Gruppe sichtbar. Die Daten bleiben
               gespeichert, solange eure Gruppe aktiv genutzt wird. Du kannst
-              jederzeit deinen Anzeigenamen ändern, dein Passwort aktualisieren
-              oder über euren Gruppen-Admin die Deaktivierung bzw. vollständige
-              Löschung deines Kontos verlangen.
+              jederzeit selbst deinen Anzeigenamen ändern, dein Passwort
+              aktualisieren oder dein Konto direkt und ohne Umweg über einen
+              Admin endgültig löschen – über{" "}
+              <strong>Mitglieder → Dein Zugang → Konto löschen</strong> sowie
+              direkt nach dem Login ohne Gruppe auf der Gruppeneinrichtungsseite
+              (im Demo-Modus setzt die Aktion stattdessen alle lokalen
+              Beispieldaten im Browser zurück).
             </p>
+            <ul>
+              <li>
+                <strong>Sofortige und endgültige Löschung:</strong> Mit deiner
+                Bestätigung werden dein Auth-Konto bzw. Login, dein
+                Benutzername, sämtliche eigenen Passwort-Zurücksetzungs-Anfragen
+                und dein eigenes Feedback sofort und unwiderruflich aus der
+                Datenbank entfernt (einschliesslich personenbezogener Namens-
+                und Feedback-Hilfseinträge) sowie deine lokale Sitzung und ein
+                laufender Entsperr-Timer im Browser gelöscht.
+              </li>
+              <li>
+                <strong>
+                  Anonymisierung zur Wahrung der Gruppen-Abrechnung (DSG):
+                </strong>{" "}
+                Historische Fahrten, Minutenpakete und Buchungen in gemeinsamen
+                Gruppen bleiben ohne Verknüpfung zu deinem Login-Konto dauerhaft
+                anonymisiert als <strong>«Gelöschtes Konto»</strong> erhalten,
+                damit die gemeinsamen Minutenstände und Salden der übrigen
+                Mitglieder korrekt und nachvollziehbar bleiben.
+              </li>
+              <li>
+                <strong>
+                  Automatische Admin-Übergabe &amp; Gruppenschutz:
+                </strong>{" "}
+                Beim Ausscheiden des letzten aktiven Admins einer Gruppe
+                übernimmt automatisch das dienstälteste verbleibende aktive
+                Mitglied die Admin-Rolle. Löscht das letzte aktive Mitglied
+                einer Gruppe sein Konto, verfallen sämtliche offenen
+                Einladungslinks dieser Gruppe automatisch.
+              </li>
+            </ul>
             <p>
               Nach dem Schweizer Datenschutzgesetz (Art. 25 ff. DSG) hast du
               jederzeit das Recht auf <strong>Auskunft</strong>,{" "}

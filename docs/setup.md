@@ -11,22 +11,23 @@ Diese Schritte werden einmal für eure Crew erledigt. GitHub enthält den Code; 
 3. Im **SQL Editor** die Dateien aus der folgenden Tabelle in der angegebenen Reihenfolge ausführen. Bei einer bestehenden Datenbank beim ersten noch ausstehenden Schritt beginnen.
 4. Unter **Project Settings → API / API Keys** die Projekt-URL und den Publishable Key für die Web-App kopieren. Auch der bisherige öffentliche Anon-Key wird unterstützt. Die App greift über persönliche Sitzungen, RLS und die SQL-Funktionen auf die gemeinsamen Daten zu.
 
-| Reihenfolge                                                                      | Zweck                                                             |
-| -------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| [202611180001](../supabase/migrations/202611180001_initial.sql)                  | Grundschema, Mitglieder, Fahrten und Journal                      |
-| [202611190001](../supabase/migrations/202611190001_names_and_cancellations.sql)  | Anzeigenamen und Storno-Akteur                                    |
-| [202611190002](../supabase/migrations/202611190002_shared_topups.sql)            | Gemeinsame Pakete mit Beitragszeilen                              |
-| [202611190003](../supabase/migrations/202611190003_locations_and_feedback.sql)   | Optionale Fahrtorte und Feedback                                  |
-| [202611190004](../supabase/migrations/202611190004_username_auth_and_resets.sql) | Benutzerkonten und Passwortanfragen                               |
-| [202611190005](../supabase/migrations/202611190005_security_and_rate_limits.sql) | Einladungsprüfung, Widerruf und Anfragelimits                     |
-| [202611190006](../supabase/migrations/202611190006_package_splits.sql)           | Gleichteilung und Minutenbedarf im vorhandenen Paket-RPC          |
-| [202611190007](../supabase/migrations/202611190007_shared_rides.sql)             | Gemeinsame Fahrten auf dem gleichen Scooter                       |
-| [202611190008](../supabase/migrations/202611190008_dev_telemetry_and_places.sql) | Dev-Telemetrie und private 100-m-Crew-Orte                        |
-| [202611200001](../supabase/migrations/202611200001_member_packages.sql)          | Minutenpakete (`record_topup`) für alle aktiven Mitglieder öffnen |
+| Reihenfolge                                                                      | Zweck                                                                                |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| [202611180001](../supabase/migrations/202611180001_initial.sql)                  | Grundschema, Mitglieder, Fahrten und Journal                                         |
+| [202611190001](../supabase/migrations/202611190001_names_and_cancellations.sql)  | Anzeigenamen und Storno-Akteur                                                       |
+| [202611190002](../supabase/migrations/202611190002_shared_topups.sql)            | Gemeinsame Pakete mit Beitragszeilen                                                 |
+| [202611190003](../supabase/migrations/202611190003_locations_and_feedback.sql)   | Optionale Fahrtorte und Feedback                                                     |
+| [202611190004](../supabase/migrations/202611190004_username_auth_and_resets.sql) | Benutzerkonten und Passwortanfragen                                                  |
+| [202611190005](../supabase/migrations/202611190005_security_and_rate_limits.sql) | Einladungsprüfung, Widerruf und Anfragelimits                                        |
+| [202611190006](../supabase/migrations/202611190006_package_splits.sql)           | Gleichteilung und Minutenbedarf im vorhandenen Paket-RPC                             |
+| [202611190007](../supabase/migrations/202611190007_shared_rides.sql)             | Gemeinsame Fahrten auf dem gleichen Scooter                                          |
+| [202611190008](../supabase/migrations/202611190008_dev_telemetry_and_places.sql) | Dev-Telemetrie und private 100-m-Crew-Orte                                           |
+| [202611200001](../supabase/migrations/202611200001_member_packages.sql)          | Minutenpakete (`record_topup`) für alle aktiven Mitglieder öffnen                    |
+| [202611200002](../supabase/migrations/202611200002_account_deletion.sql)         | Selbstständige Kontolöschung, Anonymisierung (`ON DELETE SET NULL`) & Admin-Übergabe |
 
 ## Bestehende Installation aktualisieren
 
-Spiele bei einer bestehenden Datenbank alle noch ausstehenden Migrationen bis einschliesslich `202611200001_member_packages.sql` vor dem neuen Frontend ein. Die Migrationen sind additiv, erhalten den Aufruf bisheriger Clients und berechnen frühere Paketkäufe nicht neu. Für die lokale Demo entfällt der SQL-Schritt.
+Spiele bei einer bestehenden Datenbank alle noch ausstehenden Migrationen bis einschliesslich `202611200002_account_deletion.sql` vor dem neuen Frontend ein und stelle danach die aktualisierten Edge Functions (`admin-account` und neu `delete-account`) bereit. Die Migrationen sind additiv, erhalten den Aufruf bisheriger Clients und berechnen frühere Paketkäufe nicht neu. Für die lokale Demo entfällt der SQL-Schritt.
 
 Zum Aktualisieren eines lokalen Windows-Checkouts zuerst den Entwicklungsserver mit `Ctrl+C` stoppen, dann:
 
@@ -44,16 +45,17 @@ In Chrome oder Edge die App öffnen, `F12` drücken und danach mit `Ctrl+Shift+M
 
 Die Web-App meldet Personen mit Benutzername und Passwort an. Intern bildet sie den Benutzernamen auf eine technische Auth-Adresse ab. Der E-Mail-/Passwort-Provider von Supabase muss dazu aktiv sein. Die normalen Konten entstehen über die Funktionen der App. Für eine geschlossene Crew die öffentliche Selbstregistrierung im Auth-Dienst deaktivieren, sodass die Anlage über den vorgesehenen Einladungsablauf erfolgt.
 
-Stelle die beiden Edge Functions in demselben Supabase-Projekt wie die Migrationen bereit. Mit installierter und angemeldeter Supabase CLI aus dem Repository-Stamm (ersetze `PROJECT_REF` mit der Projektkennung):
+Stelle alle drei Edge Functions in demselben Supabase-Projekt wie die Migrationen bereit. Mit installierter und angemeldeter Supabase CLI aus dem Repository-Stamm (ersetze `PROJECT_REF` mit der Projektkennung):
 
 ```sh
 supabase functions deploy public-account --project-ref PROJECT_REF --no-verify-jwt
 supabase functions deploy admin-account --project-ref PROJECT_REF --no-verify-jwt
+supabase functions deploy delete-account --project-ref PROJECT_REF --no-verify-jwt
 ```
 
-`public-account` muss vor einer Anmeldung für Registrierung und Rücksetzanfragen erreichbar sein. `admin-account` prüft selbst das übermittelte Sitzungstoken per `auth.getUser` und die Gruppenberechtigung. Die gehosteten Funktionen verwenden die projektseitig bereitgestellten Variablen `SUPABASE_URL` und `SUPABASE_SERVICE_ROLE_KEY`. Der Service-Role-Key bleibt in der Supabase-Laufzeit. Für die Web-App genügt der öffentliche Projekt-Key.
+`public-account` muss vor einer Anmeldung für Registrierung und Rücksetzanfragen erreichbar sein. `admin-account` und `delete-account` prüfen selbst das übermittelte Sitzungstoken per `auth.getUser` (`admin-account` zusätzlich die Gruppen-Admin-Berechtigung; `delete-account` zusätzlich `{ confirm: true }` und ein Rate-Limit, bevor `prepare_account_deletion` und `auth.admin.deleteUser` ausgeführt werden). Die gehosteten Funktionen verwenden die projektseitig bereitgestellten Variablen `SUPABASE_URL` und `SUPABASE_SERVICE_ROLE_KEY`. Der Service-Role-Key bleibt in der Supabase-Laufzeit. Für die Web-App genügt der öffentliche Projekt-Key.
 
-Registriere das Gründerkonto beim Einrichten des leeren Projekts und erstelle den Club, bevor du die Adresse verteilst. Sobald ein Konto in `user_accounts` oder eine Gruppe existiert, benötigt die Registrierung über die App eine gültige Einladung. Teste den zweiten Zugang mit dem Einladungslink und anschliessend die Funktion «Passwort vergessen?» zusammen mit dem Admin.
+Registriere das Gründerkonto beim Einrichten des leeren Projekts und erstelle den Club, bevor du die Adresse verteilst. Sobald ein Konto in `user_accounts` oder eine aktive Gruppenmitgliedschaft existiert, benötigt die Registrierung über die App eine gültige Einladung. Teste den zweiten Zugang mit dem Einladungslink und anschliessend die Funktion «Passwort vergessen?» zusammen mit dem Admin.
 
 ## 3. Lokal mit echten Daten testen
 
@@ -112,6 +114,7 @@ Die HTTPS-Webseite in Safari öffnen, **Teilen → Zum Home-Bildschirm** wählen
 - Als normales Mitglied prüfen, dass Minutenpakete über **Guthaben → Guthaben aufladen** erfasst werden können, aber keine manuellen Gutschriften («Minuten manuell geben»), Rollenänderungen oder Stornos möglich sind.
 - Eine Fahrt als Admin stornieren: ursprüngliche Fahrt bleibt erhalten und genau eine Gegenbuchung entsteht.
 - Mit zwei persönlichen Benutzernamen abmelden und erneut anmelden. Eine Passwortanfrage im Admin-Dashboard bearbeiten und das neue Passwort testen.
+- Mit einem separaten Testkonto die Selbstlöschung über **Mitglieder → Dein Zugang → Konto löschen** prüfen: lokale Sitzung wird beendet, erneute Anmeldung mit dem gelöschten Konto schlägt fehl, bisherige Buchungen bleiben für die Gruppe anonymisiert als `Gelöschtes Konto` mit unveränderten Salden erhalten, und beim Ausscheiden des letzten aktiven Admins wird automatisch das dienstälteste aktive Mitglied Admin.
 
 Automatisierte lokale Prüfungen ersetzen diesen Test der echten Auth-, Hosting- und Realtime-Dienste nicht. Ein echter iPhone-Test ist nach der Einrichtung noch auszuführen.
 

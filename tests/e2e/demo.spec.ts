@@ -1291,3 +1291,304 @@ test("Demo (Mobil 390px): Minutenpaket als Mitglied anlegen – Dialog, alle Spl
   expect(consoleErrors).toEqual([]);
   await context.close();
 });
+
+test("Demo (Desktop): Konto selbst löschen – sicherer Fokus, Escape-Fokusrückkehr, lokaler Speicher-Reset & sauberer Neustart", async ({
+  page,
+}) => {
+  const pageErrors: string[] = [];
+  const consoleErrors: string[] = [];
+  page.on("pageerror", (e) => pageErrors.push(e.message));
+  page.on("console", (msg) => {
+    if (msg.type() === "error") consoleErrors.push(msg.text());
+  });
+
+  await page.goto("/?demo=1");
+  await expect(page.getByRole("heading", { name: "Hoi Oskar" })).toBeVisible();
+  await expect(page.locator(".balance-number")).toContainText("149");
+
+  // 1. Eigene Fahrt anlegen, Live-Entsperr-Timer starten, Feedback-Vorschau-Key setzen & eigenen Namen ändern
+  await page.getByRole("button", { name: "Fahrt eintragen" }).click();
+  await page.getByLabel("Fahrzeit (Minuten)").fill("14");
+  await page.getByLabel("Pause (Minuten)").fill("1");
+  await page.getByLabel("Notiz optional").fill("Löschtest-Fahrt");
+  await page.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(page.locator("dialog")).toHaveCount(0);
+  await expect(
+    page.getByText("Löschtest-Fahrt", { exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".balance-number")).toContainText("134");
+
+  await page.getByRole("button", { name: "Dott entsperren" }).click();
+  await page.getByRole("button", { name: "Fahrt starten" }).click();
+  await expect(page.getByText(/Scooter entsperrt/)).toBeVisible();
+
+  await page.evaluate(() => {
+    localStorage.setItem(
+      "minutenclub-feedback-preview-v1",
+      JSON.stringify([
+        {
+          id: "preview-delete-1",
+          group_id: "demo-group",
+          member_id: "demo-0",
+          category: "idea",
+          message: "Lokale Vorschau vor Löschung",
+          page: "Übersicht",
+          created_at: new Date().toISOString(),
+        },
+      ]),
+    );
+  });
+
+  await switchTab(page, "desktop", "Mitglieder");
+  await page
+    .getByRole("button", { name: "Name ändern von Oskar", exact: true })
+    .click();
+  await page.getByLabel("Anzeigename").fill("Oskar Löschtest");
+  await page.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(page.locator("dialog")).toHaveCount(0);
+  await expect(
+    page.getByText("Oskar Löschtest (du)", { exact: true }),
+  ).toBeVisible();
+
+  // Alle bestehenden Negativprüfungen für normale Mitglieder bleiben vollständig intakt
+  await assertNoAdminOrDevControls(page, "desktop", "Oskar Löschtest");
+
+  const storageBeforeDelete = await page.evaluate(() => ({
+    demo: localStorage.getItem("minutenclub-demo-v1"),
+    unlock: localStorage.getItem("minutenclub-active-unlock-v1"),
+    feedbackPreview: localStorage.getItem("minutenclub-feedback-preview-v1"),
+  }));
+  expect(storageBeforeDelete.demo).not.toBeNull();
+  expect(storageBeforeDelete.unlock).not.toBeNull();
+  expect(storageBeforeDelete.feedbackPreview).not.toBeNull();
+
+  // 2. "Konto löschen" in "Dein Zugang" öffnen -> sicherer Fokus auf "Abbrechen", Escape gibt Fokus zurück
+  const deleteTrigger = page
+    .locator(".preference-row.danger-row")
+    .getByRole("button", { name: "Konto löschen", exact: true });
+  await expect(deleteTrigger).toBeVisible();
+  await deleteTrigger.click();
+
+  const dialog = page.locator("dialog.delete-account-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByRole("heading", { name: "Konto löschen" }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText("Lokale Demo:", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Abbrechen", exact: true }),
+  ).toBeFocused();
+
+  await page.keyboard.press("Escape");
+  await expect(page.locator("dialog")).toHaveCount(0);
+  await expect(deleteTrigger).toBeFocused();
+
+  // Nach Abbruch per Escape sind alle lokalen Daten weiterhin vorhanden
+  expect(
+    await page.evaluate(() => localStorage.getItem("minutenclub-demo-v1")),
+  ).not.toBeNull();
+
+  // 3. Erneut öffnen und endgültig löschen -> Startseite ohne ?demo=1, Status-Banner, alle Storage-Keys gelöscht
+  await deleteTrigger.click();
+  await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Abbrechen", exact: true }),
+  ).toBeFocused();
+  await dialog
+    .getByRole("button", { name: "Konto endgültig löschen", exact: true })
+    .click();
+
+  await expect(page.locator("dialog")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Demo ausprobieren" }),
+  ).toBeVisible();
+  expect(new URL(page.url()).search).toBe("");
+  await expect(page).toHaveURL(/\/$/);
+
+  const statusBanner = page.locator('.status-banner[role="status"]');
+  await expect(statusBanner).toBeVisible();
+  await expect(statusBanner).toHaveText(
+    "Demo-Konto gelöscht und lokale Beispieldaten zurückgesetzt.",
+  );
+
+  const storageAfterDelete = await page.evaluate(() => ({
+    demo: localStorage.getItem("minutenclub-demo-v1"),
+    unlock: localStorage.getItem("minutenclub-active-unlock-v1"),
+    feedbackPreview: localStorage.getItem("minutenclub-feedback-preview-v1"),
+  }));
+  expect(storageAfterDelete).toEqual({
+    demo: null,
+    unlock: null,
+    feedbackPreview: null,
+  });
+
+  // 4. Erneuter Klick auf "Demo ausprobieren" startet eine komplett frische Demo-Sitzung
+  await page.getByRole("button", { name: "Demo ausprobieren" }).click();
+  await expect(page.getByRole("heading", { name: "Hoi Oskar" })).toBeVisible();
+  await expect(page.locator(".balance-number")).toContainText("149");
+  await expect(page.getByText("Löschtest-Fahrt", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(page.getByText("Oskar Löschtest")).toHaveCount(0);
+  await expect(page.locator(".unlock-live-card")).toHaveCount(0);
+  await expect(page.locator(".dynamic-pill-bar")).toHaveCount(0);
+  await assertNoGlobalAdminOrDevChrome(page, "desktop");
+
+  expect(pageErrors).toEqual([]);
+  expect(consoleErrors).toEqual([]);
+});
+
+test("Demo (Mobil 390px): Konto selbst löschen – kein Überlauf, Escape-Fokusrückkehr, lokaler Speicher-Reset & frischer Neustart", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  const pageErrors: string[] = [];
+  const consoleErrors: string[] = [];
+  page.on("pageerror", (e) => pageErrors.push(e.message));
+  page.on("console", (msg) => {
+    if (msg.type() === "error") consoleErrors.push(msg.text());
+  });
+
+  await page.goto("http://localhost:3100/?demo=1");
+  await expect(page.getByRole("heading", { name: "Hoi Oskar" })).toBeVisible();
+  await expect(page.locator(".balance-number")).toContainText("149");
+
+  // 1. Eigene Fahrt anlegen, Live-Entsperr-Timer starten, Feedback-Vorschau-Key setzen & eigenen Namen ändern
+  await page.getByRole("button", { name: "Fahrt eintragen" }).click();
+  await page.getByLabel("Fahrzeit (Minuten)").fill("14");
+  await page.getByLabel("Pause (Minuten)").fill("1");
+  await page.getByLabel("Notiz optional").fill("Mobil-Löschfahrt");
+  await page.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(page.locator("dialog")).toHaveCount(0);
+  await expect(page.locator(".balance-number")).toContainText("134");
+
+  await page.getByRole("button", { name: "Dott entsperren" }).click();
+  await page.getByRole("button", { name: "Fahrt starten" }).click();
+  await expect(page.getByText(/Scooter entsperrt/)).toBeVisible();
+
+  await page.evaluate(() => {
+    localStorage.setItem(
+      "minutenclub-feedback-preview-v1",
+      JSON.stringify([
+        {
+          id: "preview-delete-mobile-1",
+          group_id: "demo-group",
+          member_id: "demo-0",
+          category: "bug",
+          message: "Mobile Vorschau vor Löschung",
+          page: "Mitglieder",
+          created_at: new Date().toISOString(),
+        },
+      ]),
+    );
+  });
+
+  await switchTab(page, "mobile", "Mitglieder");
+  await page
+    .getByRole("button", { name: "Name ändern von Oskar", exact: true })
+    .click();
+  await page.getByLabel("Anzeigename").fill("Oskar Mobiltest");
+  await page.getByRole("button", { name: "Speichern", exact: true }).click();
+  await expect(page.locator("dialog")).toHaveCount(0);
+  await expect(
+    page.getByText("Oskar Mobiltest (du)", { exact: true }),
+  ).toBeVisible();
+
+  // Vollständige Negativprüfung + 390px-Überlaufprüfung über alle Tabs
+  await assertNoAdminOrDevControls(page, "mobile", "Oskar Mobiltest");
+
+  const storageBeforeDelete = await page.evaluate(() => ({
+    demo: localStorage.getItem("minutenclub-demo-v1"),
+    unlock: localStorage.getItem("minutenclub-active-unlock-v1"),
+    feedbackPreview: localStorage.getItem("minutenclub-feedback-preview-v1"),
+  }));
+  expect(storageBeforeDelete.demo).not.toBeNull();
+  expect(storageBeforeDelete.unlock).not.toBeNull();
+  expect(storageBeforeDelete.feedbackPreview).not.toBeNull();
+
+  // 2. "Konto löschen" öffnen -> Fokus auf "Abbrechen", 390px-Check, Escape gibt Fokus zurück
+  const deleteTrigger = page
+    .locator(".preference-row.danger-row")
+    .getByRole("button", { name: "Konto löschen", exact: true });
+  await expect(deleteTrigger).toBeVisible();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+  await deleteTrigger.click();
+
+  const dialog = page.locator("dialog.delete-account-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByRole("heading", { name: "Konto löschen" }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Abbrechen", exact: true }),
+  ).toBeFocused();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+  expect(
+    await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth + 1),
+  ).toBe(true);
+
+  await page.keyboard.press("Escape");
+  await expect(page.locator("dialog")).toHaveCount(0);
+  await expect(deleteTrigger).toBeFocused();
+
+  // 3. Erneut öffnen und endgültig löschen -> Startseite ohne ?demo=1, Status-Banner, alle Storage-Keys gelöscht
+  await deleteTrigger.click();
+  await expect(dialog).toBeVisible();
+  await dialog
+    .getByRole("button", { name: "Konto endgültig löschen", exact: true })
+    .click();
+
+  await expect(page.locator("dialog")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Demo ausprobieren" }),
+  ).toBeVisible();
+  expect(new URL(page.url()).search).toBe("");
+  await expect(page).toHaveURL(/\/$/);
+
+  const statusBanner = page.locator('.status-banner[role="status"]');
+  await expect(statusBanner).toBeVisible();
+  await expect(statusBanner).toHaveText(
+    "Demo-Konto gelöscht und lokale Beispieldaten zurückgesetzt.",
+  );
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+
+  const storageAfterDelete = await page.evaluate(() => ({
+    demo: localStorage.getItem("minutenclub-demo-v1"),
+    unlock: localStorage.getItem("minutenclub-active-unlock-v1"),
+    feedbackPreview: localStorage.getItem("minutenclub-feedback-preview-v1"),
+  }));
+  expect(storageAfterDelete).toEqual({
+    demo: null,
+    unlock: null,
+    feedbackPreview: null,
+  });
+
+  // 4. "Demo ausprobieren" startet komplett frisch ohne alten Namen, alte Fahrt oder Live-Timer
+  await page.getByRole("button", { name: "Demo ausprobieren" }).click();
+  await expect(page.getByRole("heading", { name: "Hoi Oskar" })).toBeVisible();
+  await expect(page.locator(".balance-number")).toContainText("149");
+  await expect(page.getByText("Mobil-Löschfahrt", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(page.getByText("Oskar Mobiltest")).toHaveCount(0);
+  await expect(page.locator(".unlock-live-card")).toHaveCount(0);
+  await expect(page.locator(".dynamic-pill-bar")).toHaveCount(0);
+  await assertNoGlobalAdminOrDevChrome(page, "mobile");
+
+  expect(pageErrors).toEqual([]);
+  expect(consoleErrors).toEqual([]);
+  await context.close();
+});

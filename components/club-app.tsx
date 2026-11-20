@@ -26,6 +26,7 @@ import {
 import {
   adminCreateMemberAccount,
   adminSetMemberPassword,
+  deleteOwnAccount,
   emailToUsername,
   extractInviteToken,
   normalizeUsername,
@@ -41,12 +42,16 @@ import {
   normalizeDemoSnapshot,
 } from "@/lib/demo";
 import type { Action, Group, RpcArgs, Snapshot } from "@/lib/domain";
+import { feedbackSeenStorageKey } from "@/lib/feedback";
+import { clearActiveUnlock } from "@/lib/location";
 import { Dashboard } from "./dashboard";
+import { DeleteAccountDialog } from "./delete-account-dialog";
 import { OnboardingModal } from "./onboarding-modal";
 import { ThemeCycleButton } from "./theme-toggle";
 
 const DEMO_KEY = "minutenclub-demo-v1";
 const INVITE_KEY = "minutenclub-pending-invite-v1";
+const LOCAL_FEEDBACK_KEY = "minutenclub-feedback-preview-v1";
 
 function errorText(error: unknown) {
   if (error && typeof error === "object" && "message" in error) {
@@ -70,6 +75,7 @@ export function ClubApp() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [groupsReady, setGroupsReady] = useState(false);
   const [error, setError] = useState("");
+  const [statusNotice, setStatusNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [connected, setConnected] = useState(false);
   const [online, setOnline] = useState(true);
@@ -77,6 +83,9 @@ export function ClubApp() {
   const [pendingInvite, setPendingInvite] = useState("");
   const [entryTour, setEntryTour] = useState(false);
   const [justOnboarded, setJustOnboarded] = useState(false);
+  const [noGroupDeleteOpen, setNoGroupDeleteOpen] = useState<{
+    motion: boolean;
+  } | null>(null);
   const refreshRef = useRef<() => Promise<void>>(async () => {});
   const command = useRef<{ payload: string; id: string } | null>(null);
   const busyRef = useRef(false);
@@ -111,6 +120,7 @@ export function ClubApp() {
     setDemo(true);
     setSnapshot(data);
     setError("");
+    setStatusNotice("");
     setSyncedAt(new Date());
   }, []);
 
@@ -153,6 +163,7 @@ export function ClubApp() {
     });
     const { data } = client.auth.onAuthStateChange((_event, next) => {
       setSession(next);
+      if (next) setStatusNotice("");
       setAuthReady(true);
     });
     return () => {
@@ -427,11 +438,115 @@ export function ClubApp() {
     setGroupId("");
     setGroupsReady(false);
     setError("");
+    setStatusNotice("");
     setSyncedAt(null);
     setJustOnboarded(false);
+    setNoGroupDeleteOpen(null);
     command.current = null;
     if (window.location.search)
       window.history.replaceState({}, "", window.location.pathname);
+  }
+
+  async function handleDeleteAccount(): Promise<void> {
+    if (busyRef.current) {
+      throw new Error(
+        "Bitte warte kurz, bis die laufende Aktion abgeschlossen ist.",
+      );
+    }
+    if (demo) {
+      try {
+        localStorage.removeItem(DEMO_KEY);
+      } catch {
+        /* Ignorieren ohne Browser-Speicher. */
+      }
+      clearActiveUnlock();
+      try {
+        localStorage.removeItem(LOCAL_FEEDBACK_KEY);
+      } catch {
+        /* Ignorieren ohne Browser-Speicher. */
+      }
+      setDemo(false);
+      setSnapshot(null);
+      setGroups([]);
+      setGroupId("");
+      setGroupsReady(false);
+      setError("");
+      setConnected(false);
+      setSyncedAt(null);
+      setJustOnboarded(false);
+      setNoGroupDeleteOpen(null);
+      command.current = null;
+      createId.current = null;
+      if (window.location.search) {
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+      setStatusNotice(
+        "Demo-Konto gelöscht und lokale Beispieldaten zurückgesetzt.",
+      );
+      return;
+    }
+
+    if (!client) {
+      throw new Error("Supabase ist nicht konfiguriert.");
+    }
+    if (!online) {
+      throw new Error(
+        "Du bist offline. Bitte wieder verbinden und erneut versuchen.",
+      );
+    }
+
+    const knownGroupIds = new Set<string>(
+      [groupId, snapshot?.group.id ?? "", ...groups.map((g) => g.id)].filter(
+        Boolean,
+      ),
+    );
+
+    busyRef.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      await deleteOwnAccount(client);
+      clearActiveUnlock();
+      try {
+        sessionStorage.removeItem(INVITE_KEY);
+      } catch {
+        /* Ignorieren ohne Browser-Speicher. */
+      }
+      try {
+        localStorage.removeItem(LOCAL_FEEDBACK_KEY);
+        for (const gid of knownGroupIds) {
+          localStorage.removeItem(feedbackSeenStorageKey(gid));
+        }
+      } catch {
+        /* Ignorieren ohne Browser-Speicher. */
+      }
+      try {
+        await client.auth.signOut({ scope: "local" });
+      } catch {
+        /* Konto ist serverseitig bereits gelöscht. */
+      }
+      setDemo(false);
+      setSnapshot(null);
+      setSession(null);
+      setGroups([]);
+      setGroupId("");
+      setGroupsReady(false);
+      setPendingInvite("");
+      setError("");
+      setConnected(false);
+      setSyncedAt(null);
+      setJustOnboarded(false);
+      setNoGroupDeleteOpen(null);
+      command.current = null;
+      createId.current = null;
+      if (window.location.search) {
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+      setStatusNotice("Dein Konto wurde endgültig gelöscht.");
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
   }
 
   const ownUsername = demo
@@ -470,6 +585,7 @@ export function ClubApp() {
           setSyncedAt(null);
         }}
         onLogout={logout}
+        onDeleteAccount={handleDeleteAccount}
         onBeginAction={() => {
           command.current = null;
         }}
@@ -528,6 +644,12 @@ export function ClubApp() {
         </section>
 
         <section className="entry-card">
+          {statusNotice && !session && !demo && (
+            <div className="notice status-banner" role="status">
+              <Check size={18} />
+              <span>{statusNotice}</span>
+            </div>
+          )}
           {pendingInvite && !session && (
             <div className="notice invite-banner" role="status">
               <Ticket size={18} />
@@ -598,9 +720,26 @@ export function ClubApp() {
                 >
                   Gruppenliste neu laden
                 </button>
-                <button className="text-link" onClick={logout}>
-                  Abmelden
-                </button>
+                <div className="entry-account-actions">
+                  <button
+                    type="button"
+                    className="text-link"
+                    disabled={busy}
+                    onClick={logout}
+                  >
+                    Abmelden
+                  </button>
+                  <button
+                    type="button"
+                    className="text-link danger"
+                    disabled={busy}
+                    onClick={(e) =>
+                      setNoGroupDeleteOpen({ motion: e.detail > 0 })
+                    }
+                  >
+                    Konto löschen
+                  </button>
+                </div>
               </>
             )
           ) : (
@@ -617,9 +756,24 @@ export function ClubApp() {
             />
           )}
           {session && (groups.length === 0 || Boolean(pendingInvite)) && (
-            <button className="text-link" disabled={busy} onClick={logout}>
-              Abmelden
-            </button>
+            <div className="entry-account-actions">
+              <button
+                type="button"
+                className="text-link"
+                disabled={busy}
+                onClick={logout}
+              >
+                Abmelden
+              </button>
+              <button
+                type="button"
+                className="text-link danger"
+                disabled={busy}
+                onClick={(e) => setNoGroupDeleteOpen({ motion: e.detail > 0 })}
+              >
+                Konto löschen
+              </button>
+            </div>
           )}
         </section>
       </div>
@@ -642,6 +796,13 @@ export function ClubApp() {
           onClose={() => setEntryTour(false)}
         />
       )}
+      <DeleteAccountDialog
+        open={Boolean(session && noGroupDeleteOpen)}
+        motion={noGroupDeleteOpen?.motion ?? false}
+        username={ownUsername}
+        onClose={() => setNoGroupDeleteOpen(null)}
+        onConfirm={handleDeleteAccount}
+      />
     </main>
   );
 }

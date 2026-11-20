@@ -124,7 +124,9 @@ export function resolveFeedbackAuthor(
       member: null,
     };
   }
-  const account = accounts.find((a) => a.user_id === member.user_id);
+  const account = member.user_id
+    ? accounts.find((a) => a.user_id === member.user_id)
+    : undefined;
   return {
     displayName: member.display_name,
     username: account?.username ?? null,

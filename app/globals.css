@@ -3965,3 +3965,119 @@ tr.voided td {
     width: 100%;
   }
 }
+
+/* Konto-Löschung (Einstellungen, Startseite & Bestätigungsdialog) */
+.text-link.danger {
+  color: var(--danger);
+}
+.entry-account-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  flex-wrap: wrap;
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+.status-banner {
+  border: 1px solid color-mix(in srgb, var(--positive) 40%, var(--line));
+}
+.status-banner svg {
+  color: var(--positive);
+}
+.preference-row > div {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+.preference-row.danger-row {
+  background: color-mix(in srgb, var(--danger-bg) 52%, var(--inset));
+  border: 1px solid color-mix(in srgb, var(--danger) 38%, var(--line));
+}
+.preference-row.danger-row strong {
+  color: var(--danger);
+}
+.preference-row.danger-row small {
+  color: var(--ink);
+  opacity: 0.86;
+}
+.delete-account-dialog {
+  width: min(32rem, calc(100% - 2rem));
+}
+.delete-account-dialog .dialog-icon.danger-icon {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.delete-account-summary {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 0.9rem;
+  background: var(--inset);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 0.7rem;
+}
+.delete-account-summary li {
+  display: grid;
+  gap: 0.18rem;
+  font-size: 0.86rem;
+  line-height: 1.48;
+  color: var(--secondary);
+  overflow-wrap: anywhere;
+}
+.delete-account-summary li + li {
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--line);
+}
+.delete-account-summary li strong {
+  color: var(--ink);
+  font-size: 0.88rem;
+}
+.delete-account-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.78rem 0.9rem;
+  margin-bottom: 0.85rem;
+  border-radius: 0.85rem;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  font-size: 0.85rem;
+  line-height: 1.48;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.delete-account-callout svg {
+  flex: none;
+  margin-top: 0.14rem;
+  color: var(--tint);
+}
+.delete-account-callout.warning {
+  background: var(--danger-bg);
+  border-color: color-mix(in srgb, var(--danger) 42%, transparent);
+  color: var(--danger);
+}
+.delete-account-callout.warning svg {
+  color: var(--danger);
+}
+.delete-account-dialog .dialog-actions {
+  margin-top: 0.25rem;
+}
+@media (max-width: 48rem) {
+  .delete-account-dialog {
+    width: min(100%, 34rem);
+  }
+}
+@media (max-width: 30rem) {
+  .preference-row.danger-row .button {
+    width: 100%;
+  }
+  .delete-account-dialog .dialog-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .delete-account-dialog .dialog-actions .button {
+    width: 100%;
+  }
+}

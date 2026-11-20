@@ -91,12 +91,16 @@ export function PasswordDashboard({
   const isWorking = busy || localBusy;
 
   const usernameOf = (m: Member | undefined) => {
-    if (!m) return "";
+    if (!m?.user_id) return "";
     return accountByUserId.get(m.user_id)?.username ?? "";
   };
 
+  const manageableMembers = members.filter(
+    (m): m is Member & { user_id: string } => m.user_id !== null,
+  );
+
   function startSetPassword(member: Member) {
-    if (!admin) return;
+    if (!admin || !member.user_id) return;
     setError("");
     setIssued(null);
     setTargetMember(member);
@@ -511,7 +515,7 @@ export function PasswordDashboard({
                         </div>
                       </div>
                       <div className="pw-reset-actions">
-                        {m && (
+                        {m && m.user_id !== null && (
                           <button
                             type="button"
                             className="button primary compact-btn"
@@ -541,39 +545,45 @@ export function PasswordDashboard({
         {admin && (
           <div className="pw-section">
             <h3>Mitglieder-Passwörter direkt verwalten</h3>
-            <div className="pw-member-list">
-              {members.map((m) => {
-                const acc = accountByUserId.get(m.user_id);
-                return (
-                  <div className="pw-member-row" key={m.id}>
-                    <div className="person-cell">
-                      {renderAvatar(m, "small")}
-                      <div>
-                        <strong>
-                          {acc
-                            ? `@${acc.username}`
-                            : `Konto · ${m.display_name}`}
-                        </strong>
-                        <small>
-                          {m.display_name}
-                          {acc
-                            ? ` · Passwort aktualisiert ${dateLabel(acc.password_updated_at, true)}`
-                            : ""}
-                        </small>
+            {manageableMembers.length === 0 ? (
+              <p className="pw-empty-hint">
+                Aktuell sind keine Konten mit Login vorhanden.
+              </p>
+            ) : (
+              <div className="pw-member-list">
+                {manageableMembers.map((m) => {
+                  const acc = accountByUserId.get(m.user_id);
+                  return (
+                    <div className="pw-member-row" key={m.id}>
+                      <div className="person-cell">
+                        {renderAvatar(m, "small")}
+                        <div>
+                          <strong>
+                            {acc
+                              ? `@${acc.username}`
+                              : `Konto · ${m.display_name}`}
+                          </strong>
+                          <small>
+                            {m.display_name}
+                            {acc
+                              ? ` · Passwort aktualisiert ${dateLabel(acc.password_updated_at, true)}`
+                              : ""}
+                          </small>
+                        </div>
                       </div>
+                      <button
+                        type="button"
+                        className="button secondary compact-btn"
+                        disabled={isWorking}
+                        onClick={() => startSetPassword(m)}
+                      >
+                        <KeyRound size={15} /> Passwort neu setzen
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      className="button secondary compact-btn"
-                      disabled={isWorking}
-                      onClick={() => startSetPassword(m)}
-                    >
-                      <KeyRound size={15} /> Passwort neu setzen
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 

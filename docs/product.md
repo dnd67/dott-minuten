@@ -10,12 +10,12 @@ Jede Person hat einen eigenen Login und trägt ihre Fahrzeit und Pausierzeit **m
 
 ## Rollen
 
-| Rolle    | Möglichkeiten                                                                                                                                                             |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Mitglied | Eigenen Anzeigenamen ändern; eigene Fahrten erfassen; Minutenpakete erfassen und aufteilen; Gruppenfahrten, Guthaben, Journal, Pakete und Statistiken ansehen.            |
-| Admin    | Zusätzlich alle Mitgliedsnamen ändern, Mitglieder einladen, aktivieren/deaktivieren und Rollen verwalten, kostenlose manuelle Gutschriften buchen und Fahrten stornieren. |
+| Rolle    | Möglichkeiten                                                                                                                                                                                       |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mitglied | Eigenen Anzeigenamen ändern; eigene Fahrten erfassen; Minutenpakete erfassen und aufteilen; Gruppenfahrten, Guthaben, Journal, Pakete und Statistiken ansehen; eigenes Konto selbstständig löschen. |
+| Admin    | Zusätzlich alle Mitgliedsnamen ändern, Mitglieder einladen, aktivieren/deaktivieren und Rollen verwalten, kostenlose manuelle Gutschriften buchen und Fahrten stornieren.                           |
 
-Neue Mitglieder starten bei 0 Minuten. Mindestens ein aktiver Admin bleibt erhalten. Deaktivierte Personen verlieren den Zugriff, bleiben aber in der Historie sichtbar. Jede Gruppe ist gegenüber fremden Logins abgeschirmt.
+Neue Mitglieder starten bei 0 Minuten. Mindestens ein aktiver Admin bleibt erhalten. Deaktivierte Personen verlieren den Zugriff, bleiben aber in der Historie sichtbar. Wer sein eigenes Konto über **Mitglieder → Dein Zugang → Konto löschen** (oder nach dem Login ohne Gruppe) entfernt, löscht Login, Benutzername, Passwortanfragen und eigenes Feedback sofort; historische Gruppenbuchungen bleiben anonymisiert als «Gelöschtes Konto» erhalten, und beim Ausscheiden des letzten aktiven Admins übernimmt automatisch das dienstälteste aktive Mitglied die Admin-Rolle. Jede Gruppe ist gegenüber fremden Logins abgeschirmt.
 
 ## Eine Fahrt erfassen
 
@@ -39,7 +39,7 @@ Ein Admin storniert fehlerhafte Fahrten mit Grund. Unter **Fahrten → Status �
 | Fahrten    | Filter nach Person und Zeitraum, getrennte Fahr-/Pausenzeiten, Verbrauch, geschätzte Kosten und gegebenenfalls Storno.                                                                                          |
 | Guthaben   | Persönliche Salden, nicht zugewiesene Minuten, Paketkäufe mit Beiträgen und Minutenanteilen sowie Journal; gemeinsame Aufladung und kostenlose manuelle Gutschriften.                                           |
 | Statistik  | Fahrtenzahl, Verbrauch, Durchschnitt, Personenvergleich sowie geschätzter Verbrauchswert und offene Kostenbewertungen.                                                                                          |
-| Mitglieder | Mitgliederliste, Rollen, Aktivstatus und zeitlich begrenzte Einladungen.                                                                                                                                        |
+| Mitglieder | Mitgliederliste, Rollen, Aktivstatus, zeitlich begrenzte Einladungen sowie eigener Zugang (Passwort und Kontolöschung).                                                                                         |
 
 Bei **Guthaben aufladen** wählt ihr eine der drei Schaltflächen. Die App kann Minuten und Preis gleich unter den Teilnehmenden teilen, den Preis anhand der Wunschminuten berechnen oder Minuten nach bezahlten CHF-Beiträgen zuteilen. Die Vorschau zeigt pro Person beide Werte. Kauf, Kostenanteile und Minutengutschriften entstehen gemeinsam in einer Transaktion. [Schritt-für-Schritt-Beispiele](benutzerhandbuch.md)
 

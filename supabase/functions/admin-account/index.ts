@@ -117,6 +117,13 @@ Deno.serve(async (req: Request) => {
         return json({ error: "Mitglied nicht gefunden." }, 404);
       }
 
+      if (!targetMember.user_id) {
+        return json(
+          { error: "Dieses Konto wurde gelöscht und hat kein Passwort mehr." },
+          400,
+        );
+      }
+
       const { error: updateErr } =
         await supabaseAdmin.auth.admin.updateUserById(targetMember.user_id, {
           password: newPassword,

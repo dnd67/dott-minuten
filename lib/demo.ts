@@ -360,17 +360,28 @@ export function normalizeDemoSnapshot(raw: Snapshot): Snapshot {
           (m): m is Snapshot["members"][number] =>
             isRecord(m) &&
             isNonEmptyString(m.id) &&
-            isNonEmptyString(m.user_id) &&
+            (m.user_id === null || isNonEmptyString(m.user_id)) &&
             isNonEmptyString(m.display_name),
         )
-        .map((m) => ({
-          id: m.id.trim(),
-          group_id: data.group.id,
-          user_id: m.user_id.trim(),
-          display_name: m.display_name.trim(),
-          role: m.role === "admin" ? ("admin" as const) : ("member" as const),
-          active: Boolean(m.active),
-        }))
+        .map((m) => {
+          const userId = m.user_id === null ? null : m.user_id.trim();
+          return {
+            id: m.id.trim(),
+            group_id: data.group.id,
+            user_id: userId,
+            display_name: m.display_name.trim(),
+            role:
+              userId === null
+                ? ("member" as const)
+                : m.role === "admin"
+                  ? ("admin" as const)
+                  : ("member" as const),
+            active: userId === null ? false : Boolean(m.active),
+            ...(isNonEmptyString(m.created_at)
+              ? { created_at: m.created_at.trim() }
+              : {}),
+          };
+        })
     : [];
 
   if (rawMembers.length === 0) {
@@ -486,11 +497,17 @@ export function normalizeDemoSnapshot(raw: Snapshot): Snapshot {
     if (defaultOskar) data.accounts.unshift(defaultOskar);
   }
 
-  const others = data.members.filter((m) => m.user_id !== DEMO_USER);
-  if (others.length === 0) {
+  const eligibleOthers = data.members.filter(
+    (m) => m.user_id !== null && m.user_id !== DEMO_USER,
+  );
+  if (eligibleOthers.length === 0) {
+    const existingIds = new Set(data.members.map((m) => m.id));
     const fallbackAdmin =
       fallback.members.find(
-        (m) => m.user_id !== DEMO_USER && m.id !== demoMember.id,
+        (m) =>
+          m.user_id !== null &&
+          m.user_id !== DEMO_USER &&
+          !existingIds.has(m.id),
       ) ?? fallback.members[1];
     data.members.push({
       ...fallbackAdmin,
@@ -498,12 +515,12 @@ export function normalizeDemoSnapshot(raw: Snapshot): Snapshot {
       role: "admin",
       active: true,
     });
-  } else if (!others.some((m) => m.active && m.role === "admin")) {
+  } else if (!eligibleOthers.some((m) => m.active && m.role === "admin")) {
     const preferred =
-      others.find((m) => m.id === "demo-1" && m.active) ??
-      others.find((m) => m.active) ??
-      others.find((m) => m.id === "demo-1") ??
-      others[0];
+      eligibleOthers.find((m) => m.id === "demo-1" && m.active) ??
+      eligibleOthers.find((m) => m.active) ??
+      eligibleOthers.find((m) => m.id === "demo-1") ??
+      eligibleOthers[0];
     preferred.role = "admin";
     preferred.active = true;
   }
@@ -741,6 +758,9 @@ export function demoAction(
   } else if (action === "rename_member") {
     const m = data.members.find((m) => m.id === args.p_member_id);
     if (!m) throw new Error("Mitglied nicht gefunden.");
+    if (m.user_id === null) {
+      throw new Error("Gelöschte Konten können nicht mehr umbenannt werden.");
+    }
     if (m.id !== actor.id && !isAdmin) {
       throw new Error("Du darfst nur deinen eigenen Namen ändern.");
     }
@@ -751,11 +771,16 @@ export function demoAction(
   } else if (action === "update_member") {
     const m = data.members.find((m) => m.id === args.p_member_id);
     if (m) {
+      if (m.user_id === null) {
+        throw new Error("Gelöschte Konten können nicht mehr geändert werden.");
+      }
       if (
         m.role === "admin" &&
         m.active &&
         (!args.p_active || args.p_role !== "admin") &&
-        data.members.filter((m) => m.active && m.role === "admin").length <= 1
+        data.members.filter(
+          (x) => x.user_id !== null && x.active && x.role === "admin",
+        ).length <= 1
       )
         throw new Error("Mindestens ein aktiver Admin muss bleiben.");
       m.role = args.p_role as "member" | "admin";

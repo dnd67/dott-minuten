@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   allocateMinutes,
   groupSharedRides,
@@ -15,6 +16,7 @@ import {
   type FeedbackCategory,
   type FeedbackItem,
   type Member,
+  type PasswordResetRequest,
   type RpcArgs,
   type Snapshot,
   type TopupPlan,
@@ -32,7 +34,7 @@ import {
   matchGroupPlace,
   resolvePlaceLabel,
 } from "../lib/location";
-import { extractInviteToken } from "../lib/accounts";
+import { deleteOwnAccount, extractInviteToken } from "../lib/accounts";
 import {
   buildLiveRidePayload,
   buildStartLiveActivityUrl,
@@ -58,6 +60,8 @@ import {
 import { FeedbackInbox } from "../components/feedback-inbox";
 import { DevDashboard } from "../components/dev-dashboard";
 import { FeedbackDialog } from "../components/feedback-dialog";
+import { PasswordDashboard } from "../components/password-dashboard";
+import { DeleteAccountDialog } from "../components/delete-account-dialog";
 
 function adminDemoSnapshot(): Snapshot {
   const snap = demoSnapshot();
@@ -2107,4 +2111,636 @@ test("SSR FeedbackDialog: Admin-Shortcut und Crew-Überschrift nur bei admin=tru
       process.env.NEXT_PUBLIC_FEEDBACK_ENABLED = prevFlag;
     }
   }
+});
+
+test("deleteOwnAccount sendet POST delete-account mit Bearer-Token, apikey und confirm:true, prüft Session und meldet deutsche Fehler", async () => {
+  const prevFetch = globalThis.fetch;
+  const prevUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const prevPubKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  const prevAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  const makeMockClient = (sessionResult: {
+    data: { session: { access_token: string } | null };
+    error: Error | null;
+  }) =>
+    ({
+      auth: {
+        getSession: async () => sessionResult,
+      },
+    }) as unknown as SupabaseClient;
+
+  const validClient = makeMockClient({
+    data: { session: { access_token: "test-jwt-token-123" } },
+    error: null,
+  });
+
+  try {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co///";
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_pub_test_key";
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    // 1. Erfolgreicher Aufruf (HTTP 200) sendet exakte URL, Header und { confirm: true }:
+    const calls: { url: string; init?: RequestInit }[] = [];
+    globalThis.fetch = (async (
+      input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      calls.push({ url: String(input), init });
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    const result = await deleteOwnAccount(validClient);
+    assert.equal(result, undefined);
+    assert.equal(calls.length, 1);
+    assert.equal(
+      calls[0].url,
+      "https://example.supabase.co/functions/v1/delete-account",
+    );
+    assert.equal(calls[0].init?.method, "POST");
+    const headers = calls[0].init?.headers as Record<string, string>;
+    assert.equal(headers.Authorization, "Bearer test-jwt-token-123");
+    assert.equal(headers.apikey, "sb_pub_test_key");
+    assert.equal(headers["Content-Type"], "application/json");
+    assert.deepEqual(JSON.parse(String(calls[0].init?.body)), {
+      confirm: true,
+    });
+
+    // 2. Deutsche Server-Fehlermeldungen für 400 / 401 / 429 / 500 werden direkt durchgereicht:
+    const errorCases: [number, string][] = [
+      [400, "Bestätigung zum Löschen fehlt."],
+      [401, "Anmeldung abgelaufen. Bitte neu anmelden."],
+      [429, "Zu viele Löschversuche. Bitte kurz warten."],
+      [500, "Das Konto konnte serverseitig nicht gelöscht werden."],
+    ];
+    for (const [status, serverMsg] of errorCases) {
+      globalThis.fetch = (async () =>
+        new Response(JSON.stringify({ error: serverMsg }), {
+          status,
+          headers: { "Content-Type": "application/json" },
+        })) as typeof fetch;
+      await assert.rejects(() => deleteOwnAccount(validClient), {
+        message: serverMsg,
+      });
+    }
+
+    // 3. Leerer oder nicht-JSON-Fehlerbody nutzt deutschen Fallback-Text:
+    globalThis.fetch = (async () =>
+      new Response("Internal Server Error", { status: 500 })) as typeof fetch;
+    await assert.rejects(() => deleteOwnAccount(validClient), {
+      message:
+        "Das Konto konnte nicht gelöscht werden. Bitte erneut versuchen.",
+    });
+
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ error: "   " }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      })) as typeof fetch;
+    await assert.rejects(() => deleteOwnAccount(validClient), {
+      message:
+        "Das Konto konnte nicht gelöscht werden. Bitte erneut versuchen.",
+    });
+
+    // 4. Ohne gültigen Session-Token wird sofort abgebrochen (ohne fetch-Aufruf):
+    let fetchCount = 0;
+    globalThis.fetch = (async () => {
+      fetchCount++;
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }) as typeof fetch;
+
+    for (const badSession of [
+      { data: { session: null }, error: null },
+      { data: { session: { access_token: "" } }, error: null },
+      { data: { session: null }, error: new Error("Session expired") },
+    ]) {
+      await assert.rejects(() => deleteOwnAccount(makeMockClient(badSession)), {
+        message: "Bitte neu anmelden.",
+      });
+    }
+    assert.equal(fetchCount, 0);
+
+    // 5. Fallback auf NEXT_PUBLIC_SUPABASE_ANON_KEY und Fehler bei fehlender Konfiguration:
+    delete process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "sb_anon_fallback_key";
+    let capturedApikey = "";
+    globalThis.fetch = (async (
+      _input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      capturedApikey = (init?.headers as Record<string, string>).apikey ?? "";
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }) as typeof fetch;
+    await deleteOwnAccount(validClient);
+    assert.equal(capturedApikey, "sb_anon_fallback_key");
+
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    await assert.rejects(() => deleteOwnAccount(validClient), {
+      message: "Supabase ist nicht konfiguriert.",
+    });
+  } finally {
+    globalThis.fetch = prevFetch;
+    if (prevUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    } else {
+      process.env.NEXT_PUBLIC_SUPABASE_URL = prevUrl;
+    }
+    if (prevPubKey === undefined) {
+      delete process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+    } else {
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = prevPubKey;
+    }
+    if (prevAnonKey === undefined) {
+      delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    } else {
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = prevAnonKey;
+    }
+  }
+});
+
+test("Gelöschtes historisches Mitglied (user_id: null): summary, computeRideInsights, computeRouteRecords, resolveFeedbackAuthor und normalizeDemoSnapshot bleiben konsistent", () => {
+  const base = demoSnapshot();
+  const baseSummary = summary(base);
+  const baseInsights = computeRideInsights(base.rides, base.members);
+
+  const deletedMember: Member = {
+    id: "demo-deleted",
+    group_id: base.group.id,
+    user_id: null,
+    display_name: "Gelöschtes Konto",
+    role: "member",
+    active: false,
+    created_at: "2026-10-01T08:00:00.000Z",
+  };
+
+  const snap: Snapshot = structuredClone(base);
+  snap.members.push(deletedMember);
+  snap.packages.push({
+    id: "pkg-deleted-member",
+    group_id: snap.group.id,
+    payer_id: deletedMember.id,
+    seconds: 120 * 60,
+    price_rappen: 1800,
+    purchased_at: "2026-10-02T10:00:00.000Z",
+    note: "Historisches Paket",
+  });
+  snap.contributions = [
+    ...(snap.contributions ?? []),
+    {
+      id: "contrib-deleted-member",
+      group_id: snap.group.id,
+      package_id: "pkg-deleted-member",
+      member_id: deletedMember.id,
+      amount_rappen: 1800,
+      allocated_seconds: 120 * 60,
+    },
+  ];
+  snap.entries.push(
+    {
+      id: "credit-deleted-member",
+      group_id: snap.group.id,
+      member_id: deletedMember.id,
+      seconds: 120 * 60,
+      kind: "credit",
+      ride_id: null,
+      package_id: "pkg-deleted-member",
+      reason: "Anteil am Minutenpaket",
+      created_at: "2026-10-02T10:00:00.000Z",
+    },
+    {
+      id: "entry-ride-deleted",
+      group_id: snap.group.id,
+      member_id: deletedMember.id,
+      seconds: -720,
+      kind: "ride",
+      ride_id: "ride-deleted-1",
+      reason: "Fahrt inkl. Pause",
+      created_at: "2026-10-05T07:30:00.000Z",
+    },
+  );
+  snap.rides.push({
+    id: "ride-deleted-1",
+    group_id: snap.group.id,
+    member_id: deletedMember.id,
+    occurred_at: "2026-10-05T07:30:00.000Z",
+    duration_seconds: 600,
+    pause_seconds: 120,
+    charged_seconds: 720,
+    note: "Historische Fahrt",
+    source: "manual",
+    estimated_cost_rappen: 180,
+    voided_at: null,
+    start_label: "Zürich HB",
+    start_lat: 47.3779,
+    start_lng: 8.5403,
+    end_label: "Bellevue",
+    end_lat: 47.367,
+    end_lng: 8.5451,
+    start_gps: true,
+    end_gps: true,
+    unlocked_via_app: true,
+  });
+
+  // 1. summary() behält Salden, Kontingente und Gruppenbestand fehlerfrei bei:
+  const deletedStats = summary(snap, deletedMember.id);
+  assert.equal(deletedStats.quota, 7200);
+  assert.equal(deletedStats.consumed, 720);
+  assert.equal(deletedStats.balance, 6480);
+  assert.equal(deletedStats.rides.length, 1);
+
+  const groupStats = summary(snap);
+  assert.equal(groupStats.balance, baseSummary.balance + 6480);
+  assert.equal(groupStats.inventory, baseSummary.inventory + 7200 - 720);
+  assert.equal(groupStats.consumed, baseSummary.consumed + 720);
+
+  // 2. computeRideInsights() & computeRouteRecords() werten historische Fahrten sauber aus:
+  const insights = computeRideInsights(snap.rides, snap.members);
+  assert.equal(insights.totalRides, baseInsights.totalRides + 1);
+  const bellevue = insights.destinations.find((d) => d.label === "Bellevue");
+  assert.ok(bellevue);
+  assert.equal(bellevue.count, 1);
+  assert.deepEqual(bellevue.riders, [
+    { memberId: "demo-deleted", name: "Gelöschtes Konto", count: 1 },
+  ]);
+  const deletedProfile = insights.memberProfiles.find(
+    (p) => p.member.id === "demo-deleted",
+  );
+  assert.ok(deletedProfile);
+  assert.equal(deletedProfile.totalRides, 1);
+  assert.equal(deletedProfile.member.user_id, null);
+
+  const records = computeRouteRecords(snap.rides, snap.members, snap.places);
+  const hbToBellevue = records.find(
+    (r) => r.startLabel === "Zürich HB" && r.endLabel === "Bellevue",
+  );
+  assert.ok(hbToBellevue);
+  assert.equal(hbToBellevue.fastest.memberNames, "Gelöschtes Konto");
+  assert.equal(hbToBellevue.fastest.seconds, 600);
+
+  // 3. resolveFeedbackAuthor() liefert "Gelöschtes Konto" ohne Benutzername und ohne Crash:
+  const resolvedAuthor = resolveFeedbackAuthor(
+    { member_id: "demo-deleted" },
+    snap.members,
+    snap.accounts ?? [],
+  );
+  assert.equal(resolvedAuthor.displayName, "Gelöschtes Konto");
+  assert.equal(resolvedAuthor.username, null);
+  assert.equal(resolvedAuthor.active, false);
+  assert.equal(resolvedAuthor.member?.id, "demo-deleted");
+  assert.equal(resolvedAuthor.member?.user_id, null);
+
+  // 4. normalizeDemoSnapshot() erhält gelöschte Mitglieder für die Historie, erzwingt aber role="member", active=false:
+  const tampered = structuredClone(snap);
+  const tamperedDeleted = tampered.members.find(
+    (m) => m.id === "demo-deleted",
+  )!;
+  tamperedDeleted.role = "admin";
+  tamperedDeleted.active = true;
+  // Alle anderen Mitglieder auf member setzen, damit geprüft wird, dass demo-deleted NICHT als Admin zählt:
+  for (const m of tampered.members) {
+    if (m.id !== "demo-deleted") m.role = "member";
+  }
+
+  const normalized = normalizeDemoSnapshot(tampered);
+  const normDeleted = normalized.members.find((m) => m.id === "demo-deleted");
+  assert.ok(normDeleted);
+  assert.equal(normDeleted.user_id, null);
+  assert.equal(normDeleted.role, "member");
+  assert.equal(normDeleted.active, false);
+  assert.equal(normDeleted.display_name, "Gelöschtes Konto");
+  assert.equal(summary(normalized, "demo-deleted").balance, 6480);
+  // Ein echtes, nicht gelöschtes Mitglied (user_id !== null) wird zum aktiven Admin:
+  assert.ok(
+    normalized.members.some(
+      (m) =>
+        m.user_id !== null &&
+        m.user_id !== DEMO_USER &&
+        m.active &&
+        m.role === "admin",
+    ),
+  );
+
+  // 5. Wenn neben DEMO_USER nur ein gelöschtes Mitglied existiert, ergänzt normalizeDemoSnapshot einen echten Admin:
+  const onlyDemoAndDeleted = structuredClone(snap);
+  onlyDemoAndDeleted.members = [
+    { ...onlyDemoAndDeleted.members[0], role: "admin", active: true },
+    { ...deletedMember, role: "admin", active: true },
+  ];
+  const restored = normalizeDemoSnapshot(onlyDemoAndDeleted);
+  const restoredDeleted = restored.members.find((m) => m.id === "demo-deleted");
+  assert.ok(restoredDeleted);
+  assert.equal(restoredDeleted.user_id, null);
+  assert.equal(restoredDeleted.role, "member");
+  assert.equal(restoredDeleted.active, false);
+  assert.equal(
+    restored.members.find((m) => m.user_id === DEMO_USER)?.role,
+    "member",
+  );
+  assert.ok(
+    restored.members.some(
+      (m) =>
+        m.user_id !== null &&
+        m.user_id !== DEMO_USER &&
+        m.active &&
+        m.role === "admin",
+    ),
+  );
+});
+
+test("demoAction lehnt rename_member und update_member für gelöschte Konten (user_id: null) ab und zählt sie nicht als verbleibenden Admin", () => {
+  const adminSnap = adminDemoSnapshot();
+  adminSnap.members.push({
+    id: "demo-deleted",
+    group_id: adminSnap.group.id,
+    user_id: null,
+    display_name: "Gelöschtes Konto",
+    role: "member",
+    active: false,
+  });
+
+  // Admin darf ein gelöschtes Konto weder umbenennen noch ändern:
+  assert.throws(
+    () =>
+      demoAction(adminSnap, "rename_member", {
+        p_request_id: "rename-deleted-1",
+        p_member_id: "demo-deleted",
+        p_display_name: "Reaktiviert",
+      }),
+    { message: "Gelöschte Konten können nicht mehr umbenannt werden." },
+  );
+  assert.throws(
+    () =>
+      demoAction(adminSnap, "update_member", {
+        p_request_id: "update-deleted-1",
+        p_member_id: "demo-deleted",
+        p_role: "admin",
+        p_active: true,
+      }),
+    { message: "Gelöschte Konten können nicht mehr geändert werden." },
+  );
+
+  // Auch ein normales Mitglied erhält bei rename_member auf ein gelöschtes Konto die klare Ablehnung:
+  const memberSnap = demoSnapshot();
+  memberSnap.members.push({
+    id: "demo-deleted",
+    group_id: memberSnap.group.id,
+    user_id: null,
+    display_name: "Gelöschtes Konto",
+    role: "member",
+    active: false,
+  });
+  assert.throws(
+    () =>
+      demoAction(memberSnap, "rename_member", {
+        p_request_id: "rename-deleted-member",
+        p_member_id: "demo-deleted",
+        p_display_name: "Neu",
+      }),
+    { message: "Gelöschte Konten können nicht mehr umbenannt werden." },
+  );
+
+  // Eine gelöschte Zeile (user_id: null) darf niemals als verbleibender Admin zählen:
+  const soleRealAdminSnap = adminDemoSnapshot();
+  const august = soleRealAdminSnap.members.find((m) => m.id === "demo-1")!;
+  august.role = "member";
+  soleRealAdminSnap.members.push({
+    id: "demo-ghost-admin",
+    group_id: soleRealAdminSnap.group.id,
+    user_id: null,
+    display_name: "Gelöschtes Konto",
+    role: "admin",
+    active: true,
+  });
+
+  assert.throws(
+    () =>
+      demoAction(soleRealAdminSnap, "update_member", {
+        p_request_id: "demote-last-real-admin",
+        p_member_id: "demo-0",
+        p_role: "member",
+        p_active: true,
+      }),
+    { message: "Mindestens ein aktiver Admin muss bleiben." },
+  );
+  assert.throws(
+    () =>
+      demoAction(soleRealAdminSnap, "update_member", {
+        p_request_id: "deactivate-last-real-admin",
+        p_member_id: "demo-0",
+        p_role: "admin",
+        p_active: false,
+      }),
+    { message: "Mindestens ein aktiver Admin muss bleiben." },
+  );
+});
+
+test("SSR PasswordDashboard schliesst gelöschte Mitglieder (user_id: null) aus «Mitglieder-Passwörter direkt verwalten» aus", () => {
+  const { me, members, accounts } = makeFeedbackMembersAndAccounts();
+  const deletedMember: Member = {
+    id: "m-deleted-account",
+    group_id: "group-1",
+    user_id: null,
+    display_name: "Gelöschtes Konto",
+    role: "member",
+    active: false,
+  };
+  const allMembers = [...members, deletedMember];
+  const resetRequests: PasswordResetRequest[] = [
+    {
+      id: "reset-oskar",
+      group_id: "group-1",
+      member_id: "m-oskar",
+      target_user_id: "u-oskar",
+      username: "oskar",
+      note: "Vergessen",
+      status: "open",
+      requested_at: "2026-11-20T09:00:00.000Z",
+      resolved_at: null,
+    },
+    {
+      id: "reset-deleted",
+      group_id: "group-1",
+      member_id: "m-deleted-account",
+      target_user_id: "u-deleted-old",
+      username: "ehemals",
+      note: "Alt",
+      status: "open",
+      requested_at: "2026-11-20T08:00:00.000Z",
+      resolved_at: null,
+    },
+  ];
+
+  const noopAsyncBool = async () => true;
+  const html = renderToStaticMarkup(
+    React.createElement(PasswordDashboard, {
+      me,
+      ownUsername: "august",
+      admin: true,
+      members: allMembers,
+      accounts,
+      resetRequests,
+      busy: false,
+      renderAvatar: () => null,
+      onSetMemberPassword: noopAsyncBool,
+      onCreateMemberAccount: async () => "neu",
+      onDismissReset: noopAsyncBool,
+      onUpdateOwnPassword: noopAsyncBool,
+    }),
+  );
+
+  assert.ok(html.includes("Mitglieder-Passwörter direkt verwalten"));
+  const memberListMatch = html.match(
+    /<div class="pw-member-list">([\s\S]*?)<\/div><\/div><div class="pw-section">/,
+  );
+  assert.ok(memberListMatch);
+  const memberListHtml = memberListMatch[1];
+
+  // Genau die 5 Mitglieder mit user_id !== null werden gelistet; das gelöschte Mitglied fehlt komplett:
+  const memberRows = memberListHtml.match(/<div class="pw-member-row">/g) ?? [];
+  assert.equal(memberRows.length, members.length);
+  assert.ok(memberListHtml.includes("@august"));
+  assert.ok(memberListHtml.includes("@oskar"));
+  assert.ok(memberListHtml.includes("@max_zh"));
+  assert.equal(memberListHtml.includes("Gelöschtes Konto"), false);
+  assert.equal(memberListHtml.includes("Konto · Gelöschtes Konto"), false);
+
+  // Bei offenen Reset-Anfragen erscheint "Neues Passwort setzen" nur für Mitglieder mit user_id !== null:
+  const resetActionMatches = html.match(/Neues Passwort setzen/g) ?? [];
+  assert.equal(resetActionMatches.length, 1);
+
+  // Wenn ausschliesslich gelöschte Mitglieder übergeben werden, erscheint der Leer-Hinweis:
+  const onlyDeletedHtml = renderToStaticMarkup(
+    React.createElement(PasswordDashboard, {
+      me,
+      ownUsername: "august",
+      admin: true,
+      members: [deletedMember],
+      accounts: [],
+      resetRequests: [],
+      busy: false,
+      renderAvatar: () => null,
+      onSetMemberPassword: noopAsyncBool,
+      onCreateMemberAccount: async () => "neu",
+      onDismissReset: noopAsyncBool,
+      onUpdateOwnPassword: noopAsyncBool,
+    }),
+  );
+  assert.ok(
+    onlyDeletedHtml.includes("Aktuell sind keine Konten mit Login vorhanden."),
+  );
+  assert.equal(onlyDeletedHtml.includes('class="pw-member-row"'), false);
+});
+
+test("SSR DeleteAccountDialog: open=false rendert leer, open=true rendert Überschrift, Buttons, @username und bedingte Hinweise", () => {
+  const noop = () => {};
+  const noopConfirm = async () => {};
+
+  // 1. Geschlossener Dialog rendert exakt leer:
+  assert.equal(
+    renderToStaticMarkup(
+      React.createElement(DeleteAccountDialog, {
+        open: false,
+        onClose: noop,
+        onConfirm: noopConfirm,
+        username: "oskar",
+        groupName: "Zürich Crew",
+      }),
+    ),
+    "",
+  );
+
+  // 2. Reguläres Mitglied (open=true, demo=false, mit @oskar und Gruppenname):
+  const memberHtml = renderToStaticMarkup(
+    React.createElement(DeleteAccountDialog, {
+      open: true,
+      onClose: noop,
+      onConfirm: noopConfirm,
+      demo: false,
+      username: "@oskar",
+      groupName: "Zürich Crew",
+    }),
+  );
+  assert.ok(
+    memberHtml.includes('<dialog class="entry-dialog delete-account-dialog"'),
+  );
+  assert.ok(
+    memberHtml.includes('<h2 id="delete-account-title">Konto löschen</h2>'),
+  );
+  assert.ok(memberHtml.includes("Abbrechen"));
+  assert.ok(memberHtml.includes("Konto endgültig löschen"));
+  assert.ok(memberHtml.includes("@oskar"));
+  assert.equal(memberHtml.includes("@@oskar"), false);
+  assert.ok(memberHtml.includes("«Zürich Crew»"));
+  assert.ok(memberHtml.includes("Gelöschtes Konto"));
+  assert.equal(memberHtml.includes("Lokale Demo:"), false);
+  assert.equal(memberHtml.includes("Automatische Admin-Übergabe:"), false);
+  assert.equal(memberHtml.includes("Letztes aktives Mitglied:"), false);
+
+  // 3. Demo-Modus zeigt Demo-Hinweis und unterdrückt Admin-/Sole-Member-Callouts:
+  const demoHtml = renderToStaticMarkup(
+    React.createElement(DeleteAccountDialog, {
+      open: true,
+      onClose: noop,
+      onConfirm: noopConfirm,
+      demo: true,
+      username: "oskar",
+      groupName: "Zürich Crew",
+      adminSuccessorName: "Max",
+      isSoleActiveMember: true,
+    }),
+  );
+  assert.ok(
+    demoHtml.includes('<h2 id="delete-account-title">Konto löschen</h2>'),
+  );
+  assert.ok(demoHtml.includes("Abbrechen"));
+  assert.ok(demoHtml.includes("Konto endgültig löschen"));
+  assert.ok(demoHtml.includes("@oskar"));
+  assert.ok(demoHtml.includes("Lokale Demo:"));
+  assert.ok(demoHtml.includes("Demo-Modus"));
+  assert.equal(demoHtml.includes("Automatische Admin-Übergabe:"), false);
+  assert.equal(demoHtml.includes("Letztes aktives Mitglied:"), false);
+
+  // 4. Einziger Admin mit Nachfolger (adminSuccessorName):
+  const successorHtml = renderToStaticMarkup(
+    React.createElement(DeleteAccountDialog, {
+      open: true,
+      onClose: noop,
+      onConfirm: noopConfirm,
+      demo: false,
+      username: "august",
+      groupName: "Zürich Crew",
+      adminSuccessorName: "Max",
+      isSoleActiveMember: false,
+    }),
+  );
+  assert.ok(successorHtml.includes("Automatische Admin-Übergabe:"));
+  assert.ok(successorHtml.includes("<strong>Max</strong>"));
+  assert.equal(successorHtml.includes("Lokale Demo:"), false);
+  assert.equal(successorHtml.includes("Letztes aktives Mitglied:"), false);
+
+  // 5. Letztes aktives Mitglied (isSoleActiveMember=true) zeigt Einladungs-Ablaufhinweis:
+  const soleMemberHtml = renderToStaticMarkup(
+    React.createElement(DeleteAccountDialog, {
+      open: true,
+      onClose: noop,
+      onConfirm: noopConfirm,
+      demo: false,
+      username: "august",
+      groupName: "Zürich Crew",
+      adminSuccessorName: null,
+      isSoleActiveMember: true,
+    }),
+  );
+  assert.ok(soleMemberHtml.includes("delete-account-callout warning"));
+  assert.ok(soleMemberHtml.includes("Letztes aktives Mitglied:"));
+  assert.ok(
+    soleMemberHtml.includes(
+      "Offene Einladungslinks für «Zürich Crew» werden beim Löschen automatisch ungültig gemacht.",
+    ),
+  );
+  assert.equal(soleMemberHtml.includes("Lokale Demo:"), false);
+  assert.equal(soleMemberHtml.includes("Automatische Admin-Übergabe:"), false);
 });

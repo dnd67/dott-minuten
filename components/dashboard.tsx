@@ -34,6 +34,7 @@ import {
   Sun,
   Terminal,
   Ticket,
+  Trash2,
   TrendingUp,
   Users,
   Wallet,
@@ -78,6 +79,7 @@ import {
   type ActiveUnlock,
   type Spot,
 } from "@/lib/location";
+import { DeleteAccountDialog } from "./delete-account-dialog";
 import { DevDashboard } from "./dev-dashboard";
 import { DynamicIslandDialog } from "./dynamic-island-dialog";
 import { FeedbackDialog } from "./feedback-dialog";
@@ -143,6 +145,7 @@ type Props = {
   onUpdateOwnPassword: (newPassword: string) => Promise<boolean>;
   onGroup: (id: string) => void;
   onLogout: () => void;
+  onDeleteAccount: () => Promise<void>;
   onBeginAction: () => void;
   onRefresh: () => void;
   onResetDemo: () => void;
@@ -208,6 +211,9 @@ export function Dashboard(p: Props) {
     null,
   );
   const [islandGuideOpen, setIslandGuideOpen] = useState<{
+    motion: boolean;
+  } | null>(null);
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState<{
     motion: boolean;
   } | null>(null);
   const [autoShortcut, setAutoShortcut] = useState(false);
@@ -459,8 +465,37 @@ export function Dashboard(p: Props) {
   }
 
   const otherActiveMembers = data.members.filter(
-    (m) => m.active && m.id !== me?.id,
+    (m) => m.active && m.user_id !== null && m.id !== me?.id,
   );
+
+  const isSoleActiveMember = Boolean(
+    !p.demo && me && otherActiveMembers.length === 0,
+  );
+
+  const adminSuccessorName = useMemo(() => {
+    if (!admin || p.demo || !me) return null;
+    const candidates = data.members.filter(
+      (m) => m.active && m.user_id !== null && m.id !== me.id,
+    );
+    if (candidates.length === 0) return null;
+    if (candidates.some((m) => m.role === "admin")) return null;
+    const sortedCandidates = [...candidates].sort((a, b) => {
+      const aTime = a.created_at ?? "";
+      const bTime = b.created_at ?? "";
+      if (aTime !== bTime) {
+        if (!aTime) return 1;
+        if (!bTime) return -1;
+        const aMs = Date.parse(aTime);
+        const bMs = Date.parse(bTime);
+        if (Number.isFinite(aMs) && Number.isFinite(bMs) && aMs !== bMs) {
+          return aMs - bMs;
+        }
+        return aTime < bTime ? -1 : 1;
+      }
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
+    return sortedCandidates[0]?.display_name ?? null;
+  }, [admin, data.members, me, p.demo]);
 
   function toggleUnlockCoRider(memberId: string) {
     if (!activeUnlock) return;
@@ -481,6 +516,7 @@ export function Dashboard(p: Props) {
   const activeModal =
     modal &&
     me &&
+    (modal.kind !== "rename" || renameMember?.user_id !== null) &&
     (admin ||
       (modal.kind !== "credit" &&
         modal.kind !== "void" &&
@@ -1430,7 +1466,11 @@ export function Dashboard(p: Props) {
                         <div>
                           <strong>{m.display_name}</strong>
                           <small>
-                            {m.active ? "Minutenkonto" : "Deaktiviert"}
+                            {m.user_id === null
+                              ? "Konto gelöscht"
+                              : m.active
+                                ? "Minutenkonto"
+                                : "Deaktiviert"}
                           </small>
                         </div>
                         <strong className={s.balance < 0 ? "negative" : ""}>
@@ -1793,90 +1833,101 @@ export function Dashboard(p: Props) {
                   </div>
                 )}
                 <div className="members-list">
-                  {data.members.map((m) => (
-                    <div className="member-row" key={m.id}>
-                      {avatar(m)}
-                      <div className="member-name">
-                        <strong>
-                          {m.display_name}
-                          {m.id === me?.id ? " (du)" : ""}
-                        </strong>
-                        <small>
-                          {m.active
-                            ? m.role === "admin"
-                              ? "Administrator"
-                              : "Mitglied"
-                            : "Deaktiviert"}
-                        </small>
-                      </div>
-                      <span className={`pill ${m.active ? "active" : "muted"}`}>
-                        {m.active ? "Aktiv" : "Inaktiv"}
-                      </span>
-                      {(admin || m.id === me?.id) && (
-                        <div className="member-actions">
-                          <button
-                            className="text-link"
-                            disabled={p.busy}
-                            onClick={(e) => {
-                              setRenameMember(m);
-                              open("rename", e.detail);
-                            }}
-                          >
-                            Name ändern
-                            <span className="sr-only">
-                              {" "}
-                              von {m.display_name}
-                            </span>
-                          </button>
-                          {admin && (
-                            <>
-                              <label
-                                className="sr-only"
-                                htmlFor={`role-${m.id}`}
-                              >
-                                Rolle von {m.display_name}
-                              </label>
-                              <select
-                                id={`role-${m.id}`}
-                                value={m.role}
-                                disabled={p.busy}
-                                onChange={(e) =>
-                                  void p.mutate("update_member", {
-                                    p_member_id: m.id,
-                                    p_role: e.target.value,
-                                    p_active: m.active,
-                                  })
-                                }
-                              >
-                                <option value="member">Mitglied</option>
-                                <option value="admin">Admin</option>
-                              </select>
-                              <button
-                                className="text-link"
-                                disabled={p.busy || m.id === me?.id}
-                                onClick={() => {
-                                  if (
-                                    m.active &&
-                                    !window.confirm(
-                                      `${m.display_name} wirklich deaktivieren? Der Zugriff auf die Gruppe wird gesperrt, bisherige Buchungen bleiben erhalten.`,
-                                    )
-                                  )
-                                    return;
-                                  void p.mutate("update_member", {
-                                    p_member_id: m.id,
-                                    p_role: m.role,
-                                    p_active: !m.active,
-                                  });
-                                }}
-                              >
-                                {m.active ? "Deaktivieren" : "Aktivieren"}
-                              </button>
-                            </>
-                          )}
+                  {data.members.map((m) => {
+                    const isDeleted = m.user_id === null;
+                    return (
+                      <div className="member-row" key={m.id}>
+                        {avatar(m)}
+                        <div className="member-name">
+                          <strong>
+                            {m.display_name}
+                            {m.id === me?.id ? " (du)" : ""}
+                          </strong>
+                          <small>
+                            {isDeleted
+                              ? "Konto gelöscht"
+                              : m.active
+                                ? m.role === "admin"
+                                  ? "Administrator"
+                                  : "Mitglied"
+                                : "Deaktiviert"}
+                          </small>
                         </div>
-                      )}
-                    </div>
-                  ))}
+                        <span
+                          className={`pill ${!isDeleted && m.active ? "active" : "muted"}`}
+                        >
+                          {isDeleted
+                            ? "Gelöscht"
+                            : m.active
+                              ? "Aktiv"
+                              : "Inaktiv"}
+                        </span>
+                        {!isDeleted && (admin || m.id === me?.id) && (
+                          <div className="member-actions">
+                            <button
+                              className="text-link"
+                              disabled={p.busy}
+                              onClick={(e) => {
+                                setRenameMember(m);
+                                open("rename", e.detail);
+                              }}
+                            >
+                              Name ändern
+                              <span className="sr-only">
+                                {" "}
+                                von {m.display_name}
+                              </span>
+                            </button>
+                            {admin && (
+                              <>
+                                <label
+                                  className="sr-only"
+                                  htmlFor={`role-${m.id}`}
+                                >
+                                  Rolle von {m.display_name}
+                                </label>
+                                <select
+                                  id={`role-${m.id}`}
+                                  value={m.role}
+                                  disabled={p.busy}
+                                  onChange={(e) =>
+                                    void p.mutate("update_member", {
+                                      p_member_id: m.id,
+                                      p_role: e.target.value,
+                                      p_active: m.active,
+                                    })
+                                  }
+                                >
+                                  <option value="member">Mitglied</option>
+                                  <option value="admin">Admin</option>
+                                </select>
+                                <button
+                                  className="text-link"
+                                  disabled={p.busy || m.id === me?.id}
+                                  onClick={() => {
+                                    if (
+                                      m.active &&
+                                      !window.confirm(
+                                        `${m.display_name} wirklich deaktivieren? Der Zugriff auf die Gruppe wird gesperrt, bisherige Buchungen bleiben erhalten.`,
+                                      )
+                                    )
+                                      return;
+                                    void p.mutate("update_member", {
+                                      p_member_id: m.id,
+                                      p_role: m.role,
+                                      p_active: !m.active,
+                                    });
+                                  }}
+                                >
+                                  {m.active ? "Deaktivieren" : "Aktivieren"}
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </section>
               <div className="notice">
@@ -2025,6 +2076,26 @@ export function Dashboard(p: Props) {
                         Nutzungsbedingungen
                       </Link>
                     </div>
+                  </div>
+                  <div className="preference-row danger-row">
+                    <div>
+                      <strong>Konto löschen</strong>
+                      <small>
+                        {p.demo
+                          ? "Setzt die lokale Demo zurück und entfernt gespeicherte Beispieldaten von diesem Gerät."
+                          : "Löscht dein Konto und deinen Login dauerhaft. Fahrten & Buchungen bleiben für die Crew anonymisiert erhalten."}
+                      </small>
+                    </div>
+                    <button
+                      type="button"
+                      className="button destructive compact-btn"
+                      disabled={p.busy}
+                      onClick={(e) =>
+                        setDeleteAccountOpen({ motion: e.detail > 0 })
+                      }
+                    >
+                      <Trash2 size={15} /> Konto löschen
+                    </button>
                   </div>
                 </div>
                 {p.groups.length > 1 && (
@@ -2213,6 +2284,17 @@ export function Dashboard(p: Props) {
           onClose={() => setIslandGuideOpen(null)}
         />
       )}
+      <DeleteAccountDialog
+        open={Boolean(deleteAccountOpen)}
+        motion={deleteAccountOpen?.motion ?? false}
+        demo={p.demo}
+        username={p.ownUsername}
+        groupName={data.group.name}
+        adminSuccessorName={adminSuccessorName}
+        isSoleActiveMember={isSoleActiveMember}
+        onClose={() => setDeleteAccountOpen(null)}
+        onConfirm={p.onDeleteAccount}
+      />
     </div>
   );
 }
@@ -2384,7 +2466,9 @@ function EntryDialog({
   const [contributions, setContributions] = useState<Record<string, string>>(
     {},
   );
-  const [activeMembers] = useState(() => data.members.filter((m) => m.active));
+  const [activeMembers] = useState(() =>
+    data.members.filter((m) => m.active && m.user_id !== null),
+  );
   const otherActiveMembers = activeMembers.filter((m) => m.id !== me?.id);
   const [coRiderIds, setCoRiderIds] = useState<string[]>(() =>
     (seed?.coRiderIds ?? []).filter(
@@ -2991,7 +3075,7 @@ function EntryDialog({
                 {kind === "credit" ? "Guthaben für" : "Paket gekauft von"}
                 <select name="member" defaultValue={me?.id}>
                   {data.members
-                    .filter((m) => m.active)
+                    .filter((m) => m.active && m.user_id !== null)
                     .map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.display_name}

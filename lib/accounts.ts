@@ -68,9 +68,10 @@ function supabaseFunctionsBase() {
 }
 
 async function callAccountFunction<T = Record<string, unknown>>(
-  fnName: "public-account" | "admin-account",
+  fnName: "public-account" | "admin-account" | "delete-account",
   payload: Record<string, unknown>,
   accessToken?: string,
+  fallbackError = "Anfrage konnte nicht verarbeitet werden.",
 ): Promise<T> {
   const { url, key } = supabaseFunctionsBase();
   const res = await fetch(`${url}/functions/v1/${fnName}`, {
@@ -90,9 +91,9 @@ async function callAccountFunction<T = Record<string, unknown>>(
   }
   if (!res.ok) {
     throw new Error(
-      typeof body.error === "string"
+      typeof body.error === "string" && body.error.trim()
         ? body.error
-        : "Anfrage konnte nicht verarbeitet werden.",
+        : fallbackError,
     );
   }
   return body as T;
@@ -216,4 +217,14 @@ export async function updateOwnPassword(
   const { error } = await client.auth.updateUser({ password: cleanPass });
   if (error) throw new Error(error.message);
   await client.rpc("mark_own_password_updated");
+}
+
+export async function deleteOwnAccount(client: SupabaseClient): Promise<void> {
+  const token = await requireToken(client);
+  await callAccountFunction(
+    "delete-account",
+    { confirm: true },
+    token,
+    "Das Konto konnte nicht gelöscht werden. Bitte erneut versuchen.",
+  );
 }
