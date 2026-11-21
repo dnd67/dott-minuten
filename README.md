@@ -37,6 +37,13 @@ Eine iPhone-taugliche Web-App für eure gemeinsamen Scooter-Minutenpakete. Jede 
 
 Beispiel einer Aufladung: 600 Minuten kosten CHF 90.00. Oskar zahlt CHF 30.00, August CHF 45.00 und Max CHF 15.00. Die App schreibt automatisch **200, 300 und 100 Minuten** gut. Die Beiträge müssen zusammen dem Paketpreis entsprechen. Rundungsreste werden nach grösstem Nachkommaanteil verteilt; die Summe der gutgeschriebenen ganzen Minuten entspricht immer dem Paket.
 
+## iPhone-Kurzbefehle herunterladen
+
+- [Minutenclub Live herunterladen](https://dott-minuten.vercel.app/shortcuts/Minutenclub%20Live.shortcut) startet die iOS-Stoppuhr.
+- [Minutenclub Stopp herunterladen](https://dott-minuten.vercel.app/shortcuts/Minutenclub%20Stopp.shortcut) hält die Stoppuhr an.
+
+Öffne die Downloads auf dem iPhone in «Dateien» und füge sie in «Kurzbefehle» hinzu. Behalte die Namen **Minutenclub Live** und **Minutenclub Stopp** bei. Wähle danach in Dott-Minuten **Einstellungen → Dynamic Island & Sperrbildschirm → Einrichten → Stoppuhr** und tippe auf **Start testen**. Für die Live-Anzeige brauchst du iOS 18 oder neuer.
+
 ## Lokal starten
 
 Voraussetzung: Node.js 22 oder neuer, empfohlen Node.js 24 LTS.
