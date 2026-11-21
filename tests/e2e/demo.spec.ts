@@ -797,24 +797,29 @@ test("Gemeinsame Fahrt auf dem gleichen Scooter während aktiver Fahrt auswähle
     page.getByText(/Gemeinsam auf dem Scooter: Oskar & Max/),
   ).toBeVisible();
   await expect(page.locator(".live-clock")).toHaveText(/\d{2}:\d{2}/);
-  await expect(
-    page
-      .locator(".unlock-live-card")
-      .getByRole("link", { name: "Dynamic Island" }),
-  ).toHaveAttribute(
-    "href",
-    /^shortcuts:\/\/run-shortcut\?name=Minutenclub%20Live/,
-  );
-
-  // Einrichtungs-Dialog für Dynamic Island öffnen & prüfen, dann wieder schliessen
-  await page
+  const launch = page
     .locator(".unlock-live-card")
-    .getByRole("button", { name: "Einrichten" })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: "Dynamic Island & Sperrbildschirm" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Schliessen", exact: true }).click();
+    .getByRole("link", { name: "Dynamic Island" });
+  const nativeUrl = "shortcuts://run-shortcut?name=Minutenclub%20Live";
+  await expect(launch).toHaveAttribute("href", nativeUrl);
+
+  const setup = page
+    .locator(".unlock-live-card")
+    .getByRole("button", { name: "Einrichten" });
+  await setup.click();
+  const islandGuide = page.getByRole("dialog", {
+    name: "Dynamic Island & Sperrbildschirm",
+  });
+  const startTest = islandGuide.getByRole("link", { name: "Start testen" });
+  await expect(startTest).toHaveAttribute("href", nativeUrl);
+  await islandGuide.getByRole("button", { name: "Mit Fahrtdaten" }).click();
+  const richUrl = await startTest.getAttribute("href");
+  expect(richUrl).toMatch(/&input=text&text=/);
+  await islandGuide.getByRole("button", { name: "Schliessen" }).click();
+  await expect(launch).toHaveAttribute("href", richUrl!);
+
+  await page.reload();
+  await expect(launch).toHaveAttribute("href", richUrl!);
 
   // In anderen Tab wechseln -> schwebende In-App Dynamic Pill erscheint mit Timer
   await switchTab(page, "mobile", "Fahrten");

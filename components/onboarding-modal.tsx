@@ -501,9 +501,10 @@ export function OnboardingModal({
                 Live auf Dynamic Island &amp; Sperrbildschirm
               </h2>
               <p>
-                Nach dem Entsperren läuft dein Timer mit Restguthaben und
-                CHF-Schätzung live mit – als schwebende Pill in der App und per
-                1-Minuten-Kurzbefehl direkt auf dem iPhone.
+                In der App siehst du Fahrzeit, Restguthaben und CHF-Schätzung.
+                Mit einem iPhone-Kurzbefehl kannst du zusätzlich eine
+                Live-Aktivität für den Sperrbildschirm und die Dynamic Island
+                starten.
               </p>
 
               <div className="ob-island-stage">

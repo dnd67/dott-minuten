@@ -361,11 +361,15 @@ test("Live-Fahrt-Metriken und iPhone-Kurzbefehl-URL für Dynamic Island werden k
   assert.match(payload.subtitle, /Zürich HB/);
   assert.match(payload.subtitle, /195 Min\. übrig/);
 
-  const url = buildStartLiveActivityUrl(payload);
-  assert.ok(
-    url.startsWith(
-      "shortcuts://run-shortcut?name=Minutenclub%20Live&input=text&text=",
-    ),
+  const url = new URL(buildStartLiveActivityUrl(payload, "rich"));
+  assert.equal(url.protocol, "shortcuts:");
+  assert.equal(url.hostname, "run-shortcut");
+  assert.equal(url.searchParams.get("name"), "Minutenclub Live");
+  assert.equal(url.searchParams.get("input"), "text");
+  assert.equal(url.searchParams.get("text"), JSON.stringify(payload));
+  assert.equal(
+    buildStartLiveActivityUrl(payload, "native"),
+    "shortcuts://run-shortcut?name=Minutenclub%20Live",
   );
 });
 
