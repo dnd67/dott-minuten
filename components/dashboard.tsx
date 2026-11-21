@@ -27,6 +27,7 @@ import {
   MessageSquare,
   Plus,
   RefreshCw,
+  Settings,
   Share2,
   ShieldCheck,
   Smartphone,
@@ -103,7 +104,14 @@ import {
 import { PasswordDashboard } from "./password-dashboard";
 import { ThemeCycleButton, ThemeSegmented } from "./theme-toggle";
 
-type Tab = "overview" | "rides" | "balance" | "stats" | "members" | "dev";
+type Tab =
+  | "overview"
+  | "rides"
+  | "balance"
+  | "stats"
+  | "members"
+  | "settings"
+  | "dev";
 type Modal =
   | "ride"
   | "unlock"
@@ -515,9 +523,11 @@ export function Dashboard(p: Props) {
   }
 
   const currentTabLabel =
-    activeTab === "dev" && admin
-      ? "Dev-Dashboard"
-      : (tabs.find((t) => t.id === activeTab)?.label ?? "Übersicht");
+    activeTab === "settings"
+      ? "Einstellungen"
+      : activeTab === "dev"
+        ? "Dev-Dashboard"
+        : (tabs.find((t) => t.id === activeTab)?.label ?? "Übersicht");
 
   const activeModal =
     modal &&
@@ -924,6 +934,15 @@ export function Dashboard(p: Props) {
           <span className="breadcrumb">
             {data.group.name} <span>/</span> <strong>{currentTabLabel}</strong>
           </span>
+          <button
+            type="button"
+            className={`button ${activeTab === "settings" ? "primary" : "secondary"} topbar-settings`}
+            aria-current={activeTab === "settings" ? "page" : undefined}
+            onClick={() => navigate("settings")}
+          >
+            <Settings size={17} aria-hidden="true" />
+            Einstellungen
+          </button>
           <div className="topbar-right">
             <span
               className={`sync ${p.online && (p.connected || p.demo) ? "live" : "waiting"}`}
@@ -1043,7 +1062,7 @@ export function Dashboard(p: Props) {
                 <span className="eyebrow">{data.group.name.toUpperCase()}</span>
                 <h1>{currentTabLabel}</h1>
               </div>
-              {rideButton}
+              {activeTab !== "settings" && rideButton}
             </div>
           )}
           {activeTab === "overview" && (
@@ -1967,163 +1986,163 @@ export function Dashboard(p: Props) {
                 }
                 onUpdateOwnPassword={p.onUpdateOwnPassword}
               />
-
-              <section className="panel">
-                <PanelHeading
-                  title={`Dein Zugang · ${me?.display_name ?? "Mitglied"}`}
-                  description="Darstellung, Einführung, Feedback und Sitzung auf diesem Gerät."
-                  aside={
+            </>
+          )}
+          {(activeTab === "members" || activeTab === "settings") && (
+            <section className="panel">
+              <PanelHeading
+                title={`Dein Zugang · ${me?.display_name ?? "Mitglied"}`}
+                description="Darstellung, Einführung, Feedback und Sitzung auf diesem Gerät."
+                aside={
+                  <button
+                    className="button secondary"
+                    onClick={p.onLogout}
+                    disabled={p.busy}
+                  >
+                    <LogOut size={16} />
+                    Abmelden
+                  </button>
+                }
+              />
+              <div className="account-preferences">
+                <div className="preference-row">
+                  <div>
+                    <strong>Dynamic Island &amp; Sperrbildschirm</strong>
+                    <small>
+                      Kurzbefehle herunterladen und die Live-Anzeige auf dem
+                      iPhone testen
+                    </small>
+                  </div>
+                  <div className="preference-buttons">
                     <button
-                      className="button secondary"
-                      onClick={p.onLogout}
-                      disabled={p.busy}
+                      type="button"
+                      className="button primary"
+                      aria-label="Dynamic Island und Sperrbildschirm einrichten"
+                      onClick={(e) =>
+                        setIslandGuideOpen({ motion: e.detail > 0 })
+                      }
                     >
-                      <LogOut size={16} />
-                      Abmelden
+                      <Smartphone size={15} /> Einrichten
                     </button>
-                  }
-                />
-                <div className="account-preferences">
+                    <a
+                      href={buildStopLiveActivityUrl()}
+                      className="button ghost compact-btn"
+                    >
+                      Live-Anzeige stoppen
+                    </a>
+                  </div>
+                </div>
+                <div className="preference-row">
+                  <div>
+                    <strong>Darstellung</strong>
+                    <small>Automatisch nach Gerät, Hell oder Dunkel</small>
+                  </div>
+                  <ThemeSegmented />
+                </div>
+                <div className="preference-row">
+                  <div>
+                    <strong>Einführung &amp; Rückmeldung</strong>
+                    <small>
+                      Interaktive Tour nochmals öffnen oder Feedback senden
+                    </small>
+                  </div>
+                  <div className="preference-buttons">
+                    <button
+                      type="button"
+                      className="button secondary compact-btn"
+                      onClick={() => setTourOpen(true)}
+                    >
+                      <Sparkles size={15} /> Einführung
+                    </button>
+                    <button
+                      type="button"
+                      className="button secondary compact-btn"
+                      onClick={(e) => setFeedbackOpen({ motion: e.detail > 0 })}
+                    >
+                      <MessageSquare size={15} /> Feedback
+                    </button>
+                  </div>
+                </div>
+                {admin && (
                   <div className="preference-row">
                     <div>
-                      <strong>Darstellung</strong>
-                      <small>Automatisch nach Gerät, Hell oder Dunkel</small>
-                    </div>
-                    <ThemeSegmented />
-                  </div>
-                  <div className="preference-row">
-                    <div>
-                      <strong>Einführung &amp; Rückmeldung</strong>
+                      <strong>Admin Dev-Dashboard</strong>
                       <small>
-                        Interaktive Tour nochmals öffnen oder Feedback senden
-                      </small>
-                    </div>
-                    <div className="preference-buttons">
-                      <button
-                        type="button"
-                        className="button secondary compact-btn"
-                        onClick={() => setTourOpen(true)}
-                      >
-                        <Sparkles size={15} /> Einführung
-                      </button>
-                      <button
-                        type="button"
-                        className="button secondary compact-btn"
-                        onClick={(e) =>
-                          setFeedbackOpen({ motion: e.detail > 0 })
-                        }
-                      >
-                        <MessageSquare size={15} /> Feedback
-                      </button>
-                    </div>
-                  </div>
-                  <div className="preference-row">
-                    <div>
-                      <strong>Dynamic Island &amp; Sperrbildschirm</strong>
-                      <small>
-                        iPhone-Kurzbefehl für Live-Timer und Fahrt-Eckdaten
-                        einrichten
-                      </small>
-                    </div>
-                    <div className="preference-buttons">
-                      <button
-                        type="button"
-                        className="button secondary compact-btn"
-                        onClick={(e) =>
-                          setIslandGuideOpen({ motion: e.detail > 0 })
-                        }
-                      >
-                        <Smartphone size={15} /> Einrichten
-                      </button>
-                      <a
-                        href={buildStopLiveActivityUrl()}
-                        className="button ghost compact-btn"
-                      >
-                        Live-Anzeige stoppen
-                      </a>
-                    </div>
-                  </div>
-                  {admin && (
-                    <div className="preference-row">
-                      <div>
-                        <strong>Admin Dev-Dashboard</strong>
-                        <small>
-                          Nutzer-Feedback, GPS-Telemetrie &amp; private
-                          100-m-Crew-Orte verwalten
-                        </small>
-                      </div>
-                      <button
-                        type="button"
-                        className="button secondary compact-btn"
-                        onClick={() => navigate("dev")}
-                      >
-                        <Terminal size={15} /> Dev-Dashboard öffnen
-                      </button>
-                    </div>
-                  )}
-                  <div className="preference-row">
-                    <div>
-                      <strong>Rechtliches &amp; Datenschutz</strong>
-                      <small>
-                        Datenschutzerklärung (CH DSG), Haftungsausschluss &amp;
-                        Impressum
-                      </small>
-                    </div>
-                    <div className="preference-buttons">
-                      <Link
-                        href="/datenschutz"
-                        className="button secondary compact-btn"
-                      >
-                        <ShieldCheck size={15} /> Datenschutz
-                      </Link>
-                      <Link
-                        href="/datenschutz#nutzungsbedingungen"
-                        className="button secondary compact-btn"
-                      >
-                        Nutzungsbedingungen
-                      </Link>
-                    </div>
-                  </div>
-                  <div className="preference-row danger-row">
-                    <div>
-                      <strong>Konto löschen</strong>
-                      <small>
-                        {p.demo
-                          ? "Setzt die lokale Demo zurück und entfernt gespeicherte Beispieldaten von diesem Gerät."
-                          : "Löscht dein Konto und deinen Login dauerhaft. Fahrten & Buchungen bleiben für die Crew anonymisiert erhalten."}
+                        Nutzer-Feedback, GPS-Telemetrie &amp; private
+                        100-m-Crew-Orte verwalten
                       </small>
                     </div>
                     <button
                       type="button"
-                      className="button destructive compact-btn"
-                      disabled={p.busy}
-                      onClick={(e) =>
-                        setDeleteAccountOpen({ motion: e.detail > 0 })
-                      }
+                      className="button secondary compact-btn"
+                      onClick={() => navigate("dev")}
                     >
-                      <Trash2 size={15} /> Konto löschen
+                      <Terminal size={15} /> Dev-Dashboard öffnen
                     </button>
                   </div>
-                </div>
-                {p.groups.length > 1 && (
-                  <div className="panel-footnote">
-                    <label>
-                      Gruppe wechseln
-                      <select
-                        value={data.group.id}
-                        onChange={(e) => p.onGroup(e.target.value)}
-                      >
-                        {p.groups.map((g) => (
-                          <option key={g.id} value={g.id}>
-                            {g.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
                 )}
-              </section>
-            </>
+                <div className="preference-row">
+                  <div>
+                    <strong>Rechtliches &amp; Datenschutz</strong>
+                    <small>
+                      Datenschutzerklärung (CH DSG), Haftungsausschluss &amp;
+                      Impressum
+                    </small>
+                  </div>
+                  <div className="preference-buttons">
+                    <Link
+                      href="/datenschutz"
+                      className="button secondary compact-btn"
+                    >
+                      <ShieldCheck size={15} /> Datenschutz
+                    </Link>
+                    <Link
+                      href="/datenschutz#nutzungsbedingungen"
+                      className="button secondary compact-btn"
+                    >
+                      Nutzungsbedingungen
+                    </Link>
+                  </div>
+                </div>
+                <div className="preference-row danger-row">
+                  <div>
+                    <strong>Konto löschen</strong>
+                    <small>
+                      {p.demo
+                        ? "Setzt die lokale Demo zurück und entfernt gespeicherte Beispieldaten von diesem Gerät."
+                        : "Löscht dein Konto und deinen Login dauerhaft. Fahrten & Buchungen bleiben für die Crew anonymisiert erhalten."}
+                    </small>
+                  </div>
+                  <button
+                    type="button"
+                    className="button destructive compact-btn"
+                    disabled={p.busy}
+                    onClick={(e) =>
+                      setDeleteAccountOpen({ motion: e.detail > 0 })
+                    }
+                  >
+                    <Trash2 size={15} /> Konto löschen
+                  </button>
+                </div>
+              </div>
+              {p.groups.length > 1 && (
+                <div className="panel-footnote">
+                  <label>
+                    Gruppe wechseln
+                    <select
+                      value={data.group.id}
+                      onChange={(e) => p.onGroup(e.target.value)}
+                    >
+                      {p.groups.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
+            </section>
           )}
           {activeTab === "dev" && admin && !p.demo && (
             <DevDashboard

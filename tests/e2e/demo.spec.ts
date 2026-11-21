@@ -457,6 +457,37 @@ test("iPhone-Abmessungen: alle Seiten bedienbar, keine Admin-/Dev-Steuerung, Dia
   await page.goto("http://localhost:3100/?demo=1");
   await expect(page.getByRole("heading", { name: "Hoi Oskar" })).toBeVisible();
 
+  // Einstellungen und Island-Einrichtung sind auch auf schmalen iPhones erreichbar.
+  await page.setViewportSize({ width: 320, height: 700 });
+  const settings = page.getByRole("button", {
+    name: "Einstellungen",
+    exact: true,
+  });
+  await expect(settings).toBeInViewport();
+  await settings.click();
+  await expect(settings).toHaveAttribute("aria-current", "page");
+  await expect(
+    page.getByRole("heading", { name: "Einstellungen", exact: true }),
+  ).toBeVisible();
+  const islandSetup = page.getByRole("button", {
+    name: "Dynamic Island und Sperrbildschirm einrichten",
+  });
+  await expect(islandSetup).toBeInViewport();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(320);
+  await islandSetup.click();
+  const islandGuide = page.getByRole("dialog", {
+    name: "Dynamic Island & Sperrbildschirm",
+  });
+  await expect(
+    islandGuide.getByRole("link", { name: "Minutenclub Live herunterladen" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(islandGuide).toHaveCount(0);
+  await expect(islandSetup).toBeFocused();
+  await page.setViewportSize({ width: 390, height: 844 });
+
   // Vollständige Negativprüfung + 390px-Überlaufprüfung über alle mobilen Tabs
   await assertNoAdminOrDevControls(page, "mobile", "Oskar");
 

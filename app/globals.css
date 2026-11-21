@@ -449,6 +449,13 @@ textarea::placeholder {
   align-items: center;
   gap: 0.45rem;
 }
+.topbar-settings {
+  flex: none;
+  margin-inline-start: auto;
+  padding: 0.5rem 0.75rem;
+  white-space: nowrap;
+  font-size: 0.87rem;
+}
 .sync {
   line-height: 1.2;
 }
@@ -1339,11 +1346,19 @@ body:has(.entry-dialog[open]) {
     margin-left: 0;
   }
   .topbar {
-    min-height: 3.3rem;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 0;
     padding: max(0.25rem, env(safe-area-inset-top)) 1rem 0.25rem;
   }
   .topbar-right {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 0.1rem;
+  }
+  .topbar-right > .sync {
+    margin-inline-end: auto;
   }
   .topbar-right > .avatar {
     display: none;
