@@ -90,6 +90,9 @@ import {
   buildStopLiveActivityUrl,
   computeLiveRideMetrics,
   loadAutoShortcutEnabled,
+  loadLiveActivityMode,
+  saveLiveActivityMode,
+  type LiveActivityMode,
   saveAutoShortcutEnabled,
 } from "@/lib/live-activity";
 import {
@@ -216,6 +219,8 @@ export function Dashboard(p: Props) {
   const [deleteAccountOpen, setDeleteAccountOpen] = useState<{
     motion: boolean;
   } | null>(null);
+  const [liveActivityMode, setLiveActivityMode] =
+    useState<LiveActivityMode>("native");
   const [autoShortcut, setAutoShortcut] = useState(false);
   const [wakeLockOn, setWakeLockOn] = useState(false);
   const [wakeLockSupported, setWakeLockSupported] = useState(false);
@@ -226,6 +231,7 @@ export function Dashboard(p: Props) {
   useEffect(() => {
     setTourBannerHidden(isOnboardingDone());
     setAutoShortcut(loadAutoShortcutEnabled());
+    setLiveActivityMode(loadLiveActivityMode());
     setWakeLockSupported(
       typeof navigator !== "undefined" && "wakeLock" in navigator,
     );
@@ -1210,7 +1216,10 @@ export function Dashboard(p: Props) {
                       <Check size={16} /> Fahrt abschliessen
                     </button>
                     <a
-                      href={buildStartLiveActivityUrl(livePayload)}
+                      href={buildStartLiveActivityUrl(
+                        livePayload,
+                        liveActivityMode,
+                      )}
                       className="button secondary compact-btn"
                       title="Startet deinen iPhone-Kurzbefehl «Minutenclub Live» für Dynamic Island & Sperrbildschirm"
                     >
@@ -2026,14 +2035,12 @@ export function Dashboard(p: Props) {
                       >
                         <Smartphone size={15} /> Einrichten
                       </button>
-                      {activeUnlock && (
-                        <a
-                          href={buildStopLiveActivityUrl()}
-                          className="button ghost compact-btn"
-                        >
-                          Island stoppen
-                        </a>
-                      )}
+                      <a
+                        href={buildStopLiveActivityUrl()}
+                        className="button ghost compact-btn"
+                      >
+                        Live-Anzeige stoppen
+                      </a>
                     </div>
                   </div>
                   {admin && (
@@ -2226,7 +2233,10 @@ export function Dashboard(p: Props) {
                 groupName: data.group.name,
                 startedAt,
               });
-              window.location.href = buildStartLiveActivityUrl(payload);
+              window.location.href = buildStartLiveActivityUrl(
+                payload,
+                liveActivityMode,
+              );
             }
           }}
           onFinishUnlock={() => {
@@ -2276,6 +2286,11 @@ export function Dashboard(p: Props) {
         <DynamicIslandDialog
           motion={islandGuideOpen.motion}
           samplePayload={livePayload}
+          mode={liveActivityMode}
+          onChangeMode={(mode) => {
+            setLiveActivityMode(mode);
+            saveLiveActivityMode(mode);
+          }}
           autoShortcut={autoShortcut}
           onToggleAutoShortcut={(next) => {
             setAutoShortcut(next);

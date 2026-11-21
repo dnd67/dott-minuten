@@ -1,6 +1,9 @@
 export const SHORTCUT_NAME_START = "Minutenclub Live";
 export const SHORTCUT_NAME_STOP = "Minutenclub Stopp";
+const SHORTCUT_MODE_KEY = "minutenclub-shortcut-mode-v1";
 const AUTO_SHORTCUT_KEY = "minutenclub-auto-shortcut-v1";
+
+export type LiveActivityMode = "native" | "rich";
 
 export type LiveRidePayload = {
   title: string;
@@ -96,8 +99,32 @@ export function buildShortcutRunUrl(
   return `${base}&input=text&text=${encodeURIComponent(inputText)}`;
 }
 
-export function buildStartLiveActivityUrl(payload: LiveRidePayload): string {
-  return buildShortcutRunUrl(SHORTCUT_NAME_START, JSON.stringify(payload));
+export function buildStartLiveActivityUrl(
+  payload: LiveRidePayload,
+  mode: LiveActivityMode = "rich",
+): string {
+  return buildShortcutRunUrl(
+    SHORTCUT_NAME_START,
+    mode === "rich" ? JSON.stringify(payload) : undefined,
+  );
+}
+
+export function loadLiveActivityMode(): LiveActivityMode {
+  try {
+    return localStorage.getItem(SHORTCUT_MODE_KEY) === "rich"
+      ? "rich"
+      : "native";
+  } catch {
+    return "native";
+  }
+}
+
+export function saveLiveActivityMode(mode: LiveActivityMode): void {
+  try {
+    localStorage.setItem(SHORTCUT_MODE_KEY, mode);
+  } catch {
+    /* Die Auswahl bleibt für diese Sitzung wirksam. */
+  }
 }
 
 export function buildStopLiveActivityUrl(): string {
