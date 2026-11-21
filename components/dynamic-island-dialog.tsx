@@ -105,6 +105,8 @@ export function DynamicIslandDialog({
           Öffne diese Anleitung in Safari auf dem iPhone. Die fertigen
           Stoppuhr-Kurzbefehle zeigen die laufende Zeit ab iOS 18 auf dem
           Sperrbildschirm und auf unterstützten iPhones in der Dynamic Island.
+          Für eine Notiz mit den Fahrtdaten wähle unten «Mit Fahrtdaten ·
+          Vellure».
         </p>
 
         <ol className="island-steps">
@@ -158,16 +160,25 @@ export function DynamicIslandDialog({
             aria-pressed={mode === "rich"}
             onClick={() => onChangeMode("rich")}
           >
-            <Sparkles size={14} /> Mit Fahrtdaten
+            <Sparkles size={14} /> Mit Fahrtdaten · Vellure
           </button>
         </div>
 
         {mode === "rich" && (
           <ol className="island-steps">
             <li>
-              <strong>Start-Kurzbefehl erstellen.</strong> Öffne «Kurzbefehle»,
-              tippe auf <strong>+</strong> und benenne den neuen Kurzbefehl
-              genau so:
+              <strong>Vellure installieren.</strong> Lade die kostenlose App für
+              iOS 17 oder neuer und öffne sie einmal. Erlaube Live-Aktivitäten,
+              wenn das iPhone danach fragt.{" "}
+              <a href="https://apps.apple.com/ch/app/id6806074181">
+                Vellure im Schweizer App Store
+              </a>
+            </li>
+            <li>
+              <strong>Start-Kurzbefehl vorbereiten.</strong> Öffne die Apple-App
+              «Kurzbefehle». Lege über «+» einen Kurzbefehl mit dem folgenden
+              Namen an. Gibt es ihn schon, öffne ihn über «…» und ersetze die
+              bisherigen Aktionen durch die nächsten drei Schritte.
               <div className="copy-chip-row">
                 <code>{SHORTCUT_NAME_START}</code>
                 <button
@@ -185,24 +196,22 @@ export function DynamicIslandDialog({
               </div>
             </li>
             <li>
-              <strong>Fahrtdaten übergeben.</strong> Installiere und öffne{" "}
-              <a href="https://apps.apple.com/ch/app/live-shortcut/id6476543630">
-                Live Shortcut
-              </a>{" "}
-              (ab iOS 16.4). Füge im Kurzbefehl zuerst «Wörterbuch aus Eingabe
-              abrufen» hinzu und wähle als Quelle «Kurzbefehleingabe». Füge
-              danach «Wörterbuchwert abrufen» hinzu und trage als Schlüssel{" "}
-              <code>summary</code> ein. Wähle als Wörterbuch das Ergebnis der
-              ersten Aktion. Füge dann aus «Live Shortcut» die Aktion zum
-              Starten einer Live-Aktivität hinzu und setze deren Text auf den
-              abgerufenen Wörterbuchwert. Speichere mit «Fertig». Die Fahrtdaten
-              zeigen den Stand beim Start der Anzeige.
+              Suche nach <strong>«Wörterbuch aus Eingabe abrufen»</strong>.
+              Wähle für das Eingabefeld die Variable «Kurzbefehleingabe». Hier
+              übergibt Dott-Minuten die Fahrtdaten als JSON-Text.
             </li>
             <li>
-              <strong>Stopp-Kurzbefehl erstellen.</strong> Lege einen zweiten
-              Kurzbefehl namens <code>{SHORTCUT_NAME_STOP}</code> an. Wähle
-              unter «Live Shortcut» die Aktion zum Beenden der Live-Aktivität
-              und speichere mit «Fertig».
+              Füge <strong>«Wörterbuchwert abrufen»</strong> hinzu. Verwende das
+              Wörterbuch aus dem vorherigen Schritt und gib als Schlüssel{" "}
+              <code>summary</code> ein. Dieser Wert enthält den fertigen Text
+              mit dem Stand beim Start der Anzeige.
+            </li>
+            <li>
+              Suche in den Aktionen nach <strong>Vellure</strong> und wähle die
+              Aktion zum Erstellen und Anzeigen einer Notiz. Tippe auf das
+              Textfeld und wähle den Wörterbuchwert aus dem vorherigen Schritt
+              als Variable. Speichere den Kurzbefehl und kehre zu Dott-Minuten
+              zurück.
             </li>
           </ol>
         )}
@@ -213,13 +222,16 @@ export function DynamicIslandDialog({
           nachfragt, und sperre das iPhone. Wenn Kurzbefehle den Namen nicht
           findet, prüfe die Schreibweise in der App «Kurzbefehle». Wenn die
           Aktivität auf dem Sperrbildschirm fehlt, prüfe «Live-Aktivitäten» in
-          den iPhone-Einstellungen. Tippe danach auf «Stopp testen».
+          den iPhone-Einstellungen.{" "}
+          {mode === "rich"
+            ? "Zum Ausblenden wische die Vellure-Notiz auf dem Sperrbildschirm nach links und entferne sie."
+            : "Tippe danach auf «Stopp testen»."}
         </p>
 
         <p>
-          Bei einer laufenden Fahrt startet «Dynamic Island» die Anzeige. Nach
-          der Fahrt findest du «Live-Anzeige stoppen» in den Einstellungen von
-          Dott-Minuten.
+          Bei einer laufenden Fahrt startet «Dynamic Island» die Anzeige.{" "}
+          {mode === "native" &&
+            "Nach der Fahrt findest du «Live-Anzeige stoppen» in den Einstellungen von Dott-Minuten."}
         </p>
 
         <label className="legal-consent island-auto-toggle">
@@ -240,7 +252,9 @@ export function DynamicIslandDialog({
             <ExternalLink size={16} /> Start testen
           </a>
           <a href={stopUrl} className="button secondary">
-            Stopp testen
+            {mode === "rich"
+              ? "Eigenen Stopp-Kurzbefehl testen (optional)"
+              : "Stopp testen"}
           </a>
         </div>
       </div>

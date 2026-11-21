@@ -44,6 +44,8 @@ Beispiel einer Aufladung: 600 Minuten kosten CHF 90.00. Oskar zahlt CHF 30.00, A
 
 Öffne die Downloads auf dem iPhone in «Dateien» und füge sie in «Kurzbefehle» hinzu. Behalte die Namen **Minutenclub Live** und **Minutenclub Stopp** bei. Wähle danach in Dott-Minuten **Einstellungen → Dynamic Island & Sperrbildschirm → Einrichten → Stoppuhr** und tippe auf **Start testen**. Für die Live-Anzeige brauchst du iOS 18 oder neuer.
 
+Für Fahrtdaten als Notiz wähle im selben Dialog **Mit Fahrtdaten · Vellure**. Die Anleitung zeigt, wie **Minutenclub Live** die Fahrtzusammenfassung aus dem Feld `summary` als Notiz auf dem Sperrbildschirm und auf kompatiblen iPhones in der Dynamic Island anzeigt. Vellure ist gratis und benötigt iOS 17 oder neuer. [Vellure im Schweizer App Store](https://apps.apple.com/ch/app/id6806074181)
+
 ## Lokal starten
 
 Voraussetzung: Node.js 22 oder neuer, empfohlen Node.js 24 LTS.

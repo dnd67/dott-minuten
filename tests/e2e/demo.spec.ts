@@ -856,7 +856,13 @@ test("Gemeinsame Fahrt auf dem gleichen Scooter während aktiver Fahrt auswähle
   await expect(
     islandGuide.getByText("In Kurzbefehle importieren."),
   ).toBeVisible();
-  await islandGuide.getByRole("button", { name: "Mit Fahrtdaten" }).click();
+  await islandGuide
+    .getByRole("button", { name: "Mit Fahrtdaten · Vellure" })
+    .click();
+  await expect(
+    islandGuide.getByRole("link", { name: "Vellure im Schweizer App Store" }),
+  ).toHaveAttribute("href", "https://apps.apple.com/ch/app/id6806074181");
+  await expect(islandGuide.getByText("summary", { exact: true })).toBeVisible();
   await expect(downloadStart).toBeVisible();
   const richUrl = await startTest.getAttribute("href");
   expect(richUrl).toMatch(/&input=text&text=/);
