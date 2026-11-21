@@ -812,7 +812,21 @@ test("Gemeinsame Fahrt auf dem gleichen Scooter während aktiver Fahrt auswähle
   });
   const startTest = islandGuide.getByRole("link", { name: "Start testen" });
   await expect(startTest).toHaveAttribute("href", nativeUrl);
+  const downloadStart = islandGuide.getByRole("link", {
+    name: "Minutenclub Live herunterladen",
+  });
+  await expect(downloadStart).toHaveAttribute(
+    "href",
+    "/shortcuts/Minutenclub%20Live.shortcut",
+  );
+  await expect(
+    islandGuide.getByRole("link", { name: "Minutenclub Stopp herunterladen" }),
+  ).toHaveAttribute("href", "/shortcuts/Minutenclub%20Stopp.shortcut");
+  await expect(
+    islandGuide.getByText("In Kurzbefehle importieren."),
+  ).toBeVisible();
   await islandGuide.getByRole("button", { name: "Mit Fahrtdaten" }).click();
+  await expect(downloadStart).toHaveCount(0);
   const richUrl = await startTest.getAttribute("href");
   expect(richUrl).toMatch(/&input=text&text=/);
   await islandGuide.getByRole("button", { name: "Schliessen" }).click();
