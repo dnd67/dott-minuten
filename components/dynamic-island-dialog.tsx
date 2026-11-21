@@ -102,11 +102,44 @@ export function DynamicIslandDialog({
         </span>
         <h2 id="island-dialog-title">Dynamic Island &amp; Sperrbildschirm</h2>
         <p>
-          Öffne diese Seite in Safari auf dem iPhone und richte die Kurzbefehle
-          einmal ein. Die laufende Live-Aktivität erscheint auf dem
-          Sperrbildschirm und auf iPhones mit Dynamic Island auch oben am
-          Display.
+          Öffne diese Anleitung in Safari auf dem iPhone. Die fertigen
+          Stoppuhr-Kurzbefehle zeigen die laufende Zeit ab iOS 18 auf dem
+          Sperrbildschirm und auf unterstützten iPhones in der Dynamic Island.
         </p>
+
+        <ol className="island-steps">
+          <li>
+            <strong>Beide Kurzbefehle herunterladen.</strong> Damit wählst du
+            «Stoppuhr» für die Live-Anzeige aus.
+            <div className="copy-chip-row">
+              <a
+                className="button primary"
+                href={`/shortcuts/${encodeURIComponent(SHORTCUT_NAME_START)}.shortcut`}
+                onClick={() => onChangeMode("native")}
+                download
+              >
+                <Download size={16} aria-hidden="true" /> {SHORTCUT_NAME_START}{" "}
+                herunterladen
+              </a>
+              <a
+                className="button secondary"
+                href={`/shortcuts/${encodeURIComponent(SHORTCUT_NAME_STOP)}.shortcut`}
+                onClick={() => onChangeMode("native")}
+                download
+              >
+                <Download size={16} aria-hidden="true" /> {SHORTCUT_NAME_STOP}{" "}
+                herunterladen
+              </a>
+            </div>
+          </li>
+          <li>
+            <strong>In Kurzbefehle importieren.</strong> Öffne beide Dateien
+            unter «Downloads» in Safari oder in der App «Dateien». Tippe jeweils
+            auf «Kurzbefehl hinzufügen» und behalte die Namen{" "}
+            <code>{SHORTCUT_NAME_START}</code> und{" "}
+            <code>{SHORTCUT_NAME_STOP}</code> bei.
+          </li>
+        </ol>
 
         <div
           className="split-modes"
@@ -129,91 +162,59 @@ export function DynamicIslandDialog({
           </button>
         </div>
 
-        <ol className="island-steps">
-          {mode === "native" ? (
-            <>
-              <li>
-                <strong>Beide Kurzbefehle herunterladen.</strong> Die Dateien
-                starten und stoppen die Stoppuhr der iPhone-Uhr.
-                <div className="copy-chip-row">
-                  <a
-                    className="button secondary compact-btn"
-                    href={`/shortcuts/${encodeURIComponent(SHORTCUT_NAME_START)}.shortcut`}
-                    download
-                  >
-                    <Download size={14} /> {SHORTCUT_NAME_START} herunterladen
-                  </a>
-                  <a
-                    className="button secondary compact-btn"
-                    href={`/shortcuts/${encodeURIComponent(SHORTCUT_NAME_STOP)}.shortcut`}
-                    download
-                  >
-                    <Download size={14} /> {SHORTCUT_NAME_STOP} herunterladen
-                  </a>
-                </div>
-              </li>
-              <li>
-                <strong>In Kurzbefehle importieren.</strong> Öffne in Safari
-                «Downloads» oder in der App «Dateien» den Ordner «Downloads».
-                Tippe nacheinander auf beide Dateien und bestätige jeweils
-                «Kurzbefehl hinzufügen». Die Namen müssen genau{" "}
-                <code>{SHORTCUT_NAME_START}</code> und{" "}
-                <code>{SHORTCUT_NAME_STOP}</code> lauten.
-              </li>
-            </>
-          ) : (
-            <>
-              <li>
-                <strong>Start-Kurzbefehl erstellen.</strong> Öffne
-                «Kurzbefehle», tippe auf <strong>+</strong> und benenne den
-                neuen Kurzbefehl genau so:
-                <div className="copy-chip-row">
-                  <code>{SHORTCUT_NAME_START}</code>
-                  <button
-                    type="button"
-                    className="button secondary compact-btn"
-                    onClick={() => void copyText("start", SHORTCUT_NAME_START)}
-                  >
-                    {copied === "start" ? (
-                      <Check size={14} />
-                    ) : (
-                      <Copy size={14} />
-                    )}
-                    {copied === "start" ? "Kopiert" : "Namen kopieren"}
-                  </button>
-                </div>
-              </li>
-              <li>
-                <strong>Fahrtdaten übergeben.</strong> Installiere und öffne{" "}
-                <a href="https://apps.apple.com/ch/app/live-shortcut/id6476543630">
-                  Live Shortcut
-                </a>{" "}
-                (ab iOS 16.4). Füge im Kurzbefehl zuerst «Wörterbuch aus Eingabe
-                abrufen» hinzu und wähle als Quelle «Kurzbefehleingabe». Füge
-                danach «Wörterbuchwert abrufen» hinzu und trage als Schlüssel{" "}
-                <code>summary</code> ein. Wähle als Wörterbuch das Ergebnis der
-                ersten Aktion. Füge dann aus «Live Shortcut» die Aktion zum
-                Starten einer Live-Aktivität hinzu und setze deren Text auf den
-                abgerufenen Wörterbuchwert. Speichere mit «Fertig». Die
-                Fahrtdaten zeigen den Stand beim Start der Anzeige.
-              </li>
-              <li>
-                <strong>Stopp-Kurzbefehl erstellen.</strong> Lege einen zweiten
-                Kurzbefehl namens <code>{SHORTCUT_NAME_STOP}</code> an. Wähle
-                unter «Live Shortcut» die Aktion zum Beenden der Live-Aktivität
-                und speichere mit «Fertig».
-              </li>
-            </>
-          )}
-          <li>
-            <strong>Auf dem iPhone testen.</strong> Kehre zu Dott-Minuten zurück
-            und tippe unten auf «Start testen». Bestätige «Öffnen», falls Safari
-            nachfragt, und sperre das iPhone. Wenn Kurzbefehle den Namen nicht
-            findet, prüfe die Schreibweise in der App «Kurzbefehle». Wenn die
-            Aktivität auf dem Sperrbildschirm fehlt, prüfe «Live-Aktivitäten» in
-            den iPhone-Einstellungen. Tippe danach auf «Stopp testen».
-          </li>
-        </ol>
+        {mode === "rich" && (
+          <ol className="island-steps">
+            <li>
+              <strong>Start-Kurzbefehl erstellen.</strong> Öffne «Kurzbefehle»,
+              tippe auf <strong>+</strong> und benenne den neuen Kurzbefehl
+              genau so:
+              <div className="copy-chip-row">
+                <code>{SHORTCUT_NAME_START}</code>
+                <button
+                  type="button"
+                  className="button secondary compact-btn"
+                  onClick={() => void copyText("start", SHORTCUT_NAME_START)}
+                >
+                  {copied === "start" ? (
+                    <Check size={14} />
+                  ) : (
+                    <Copy size={14} />
+                  )}
+                  {copied === "start" ? "Kopiert" : "Namen kopieren"}
+                </button>
+              </div>
+            </li>
+            <li>
+              <strong>Fahrtdaten übergeben.</strong> Installiere und öffne{" "}
+              <a href="https://apps.apple.com/ch/app/live-shortcut/id6476543630">
+                Live Shortcut
+              </a>{" "}
+              (ab iOS 16.4). Füge im Kurzbefehl zuerst «Wörterbuch aus Eingabe
+              abrufen» hinzu und wähle als Quelle «Kurzbefehleingabe». Füge
+              danach «Wörterbuchwert abrufen» hinzu und trage als Schlüssel{" "}
+              <code>summary</code> ein. Wähle als Wörterbuch das Ergebnis der
+              ersten Aktion. Füge dann aus «Live Shortcut» die Aktion zum
+              Starten einer Live-Aktivität hinzu und setze deren Text auf den
+              abgerufenen Wörterbuchwert. Speichere mit «Fertig». Die Fahrtdaten
+              zeigen den Stand beim Start der Anzeige.
+            </li>
+            <li>
+              <strong>Stopp-Kurzbefehl erstellen.</strong> Lege einen zweiten
+              Kurzbefehl namens <code>{SHORTCUT_NAME_STOP}</code> an. Wähle
+              unter «Live Shortcut» die Aktion zum Beenden der Live-Aktivität
+              und speichere mit «Fertig».
+            </li>
+          </ol>
+        )}
+
+        <p>
+          <strong>Auf dem iPhone testen.</strong> Kehre zu Dott-Minuten zurück
+          und tippe unten auf «Start testen». Bestätige «Öffnen», falls Safari
+          nachfragt, und sperre das iPhone. Wenn Kurzbefehle den Namen nicht
+          findet, prüfe die Schreibweise in der App «Kurzbefehle». Wenn die
+          Aktivität auf dem Sperrbildschirm fehlt, prüfe «Live-Aktivitäten» in
+          den iPhone-Einstellungen. Tippe danach auf «Stopp testen».
+        </p>
 
         <p>
           Bei einer laufenden Fahrt startet «Dynamic Island» die Anzeige. Nach

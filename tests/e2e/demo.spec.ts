@@ -857,7 +857,7 @@ test("Gemeinsame Fahrt auf dem gleichen Scooter während aktiver Fahrt auswähle
     islandGuide.getByText("In Kurzbefehle importieren."),
   ).toBeVisible();
   await islandGuide.getByRole("button", { name: "Mit Fahrtdaten" }).click();
-  await expect(downloadStart).toHaveCount(0);
+  await expect(downloadStart).toBeVisible();
   const richUrl = await startTest.getAttribute("href");
   expect(richUrl).toMatch(/&input=text&text=/);
   await islandGuide.getByRole("button", { name: "Schliessen" }).click();
@@ -865,6 +865,18 @@ test("Gemeinsame Fahrt auf dem gleichen Scooter während aktiver Fahrt auswähle
 
   await page.reload();
   await expect(launch).toHaveAttribute("href", richUrl!);
+
+  await setup.click();
+  await expect(downloadStart).toBeVisible();
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    downloadStart.click(),
+  ]);
+  expect(download.suggestedFilename()).toBe("Minutenclub Live.shortcut");
+  expect(await download.failure()).toBeNull();
+  await expect(startTest).toHaveAttribute("href", nativeUrl);
+  await islandGuide.getByRole("button", { name: "Schliessen" }).click();
+  await expect(launch).toHaveAttribute("href", nativeUrl);
 
   // In anderen Tab wechseln -> schwebende In-App Dynamic Pill erscheint mit Timer
   await switchTab(page, "mobile", "Fahrten");
